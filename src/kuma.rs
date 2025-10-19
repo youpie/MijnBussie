@@ -14,7 +14,7 @@ const COLOR_RED: &str = "#a51d2d";
 const COLOR_GREEN: &str = "#26a269";
 
 pub async fn first_run() -> GenResult<()> {
-    let (user, properties) = get_instance()?;
+    let (user, properties) = get_instance();
     let kuma_properties = properties.kuma_properties.clone();
     let url: Url = kuma_properties.domain.parse()?;
     let username = kuma_properties.username;
@@ -55,7 +55,7 @@ async fn create_monitor(
     user_name: &str,
     notification_id: i32,
 ) -> GenResult<i32> {
-    let (user, properties) = get_instance()?;
+    let (user, properties) = get_instance();
     let heartbeat_interval: i32 = (user.user_properties.execution_interval_minutes * 60)
         + properties.expected_execution_time_seconds;
     let heartbeat_retry: i32 = properties.kuma_properties.hearbeat_retry;
@@ -84,7 +84,7 @@ async fn create_notification(
     user_name: &str,
     kuma_url: &Url,
 ) -> GenResult<(i32, bool)> {
-    let (_user, properties) = get_instance()?;
+    let (_user, properties) = get_instance();
     let base_html =
         read_to_string("./templates/email_base.html").expect("Can't get email base template");
     let offline_html =
@@ -131,7 +131,7 @@ async fn create_notification(
     }
     info!("Notification for user {user_name} does NOT yet exist, creating one");
 
-    let email_env = email::EnvMailVariables::new_kuma()?;
+    let email_env = email::EnvMailVariables::new_kuma();
     let port = properties.kuma_properties.mail_port;
     let secure = properties.kuma_properties.use_ssl;
     let config = serde_json::json!({

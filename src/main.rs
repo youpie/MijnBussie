@@ -32,7 +32,6 @@ use tokio::sync::mpsc::channel;
 
 use crate::errors::FailureType;
 use crate::errors::IncorrectCredentialsCount;
-use crate::errors::OptionResult;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
 use crate::execution::StartReason;
@@ -81,7 +80,7 @@ struct Args {
 }
 
 fn create_shift_link(shift: &Shift, include_domain: bool) -> GenResult<String> {
-    let (_user, properties) = get_instance()?;
+    let (_user, properties) = get_instance();
     let date_format = format_description!("[day]-[month]-[year]");
     let formatted_date = shift.date.format(date_format)?;
     let domain = match include_domain {
@@ -104,11 +103,11 @@ fn create_shift_link(shift: &Shift, include_domain: bool) -> GenResult<String> {
     ))
 }
 
-fn create_ical_filename() -> GenResult<String> {
-    let (user, _properties) = get_instance()?;
+fn create_ical_filename() -> String {
+    let (user, _properties) = get_instance();
     match &user.file_name {
-        value if value.is_empty() => Ok(format!("{}.ics", user.user_name)),
-        _ => Ok(format!("{}.ics", user.file_name)),
+        value if value.is_empty() => format!("{}.ics", user.user_name),
+        _ => format!("{}.ics", user.file_name),
     }
 }
 
@@ -164,7 +163,8 @@ async fn wait_untill_redirect(driver: &WebDriver) -> GenResult<()> {
 }
 
 pub fn create_path(filename: &str) -> PathBuf {
-    let mut path = PathBuf::from(BASE_DIRECTORY);
+    let (_user, properties) = get_instance();
+    let mut path = PathBuf::from(&properties.file_target);
     path.push(filename);
     path
 }
@@ -196,14 +196,14 @@ fn set_get_name(set_new_name: Option<String>) -> String {
     name
 }
 
-pub fn get_instance() -> GenResult<(Arc<UserData>, Arc<GeneralProperties>)> {
+pub fn get_instance() -> (Arc<UserData>, Arc<GeneralProperties>) {
     let user = USER_PROPERTIES
         .with_borrow(|user| user.as_ref().cloned())
-        .result()?;
+        .expect("Failed to get UserData");
     let properties = GENERAL_PROPERTIES
         .with_borrow(|user| user.as_ref().cloned())
-        .result()?;
-    Ok((user, properties))
+        .expect("Failed to get Properties");
+    (user, properties)
 }
 
 // Main program logic that has to run, if it fails it will all be reran.
@@ -212,7 +212,7 @@ async fn main_program(
     retry_count: usize,
     logbook: &mut ApplicationLogbook,
 ) -> GenResult<()> {
-    let (user, _properties) = get_instance()?;
+    let (user, _properties) = get_instance();
     let personeelsnummer = &user.personeelsnummer;
     let password = &user.password;
     driver.delete_all_cookies().await?;
@@ -239,12 +239,11 @@ async fn main_program(
         info!(
             "Existing calendar file not found, adding two extra months of shifts and removing partial calendars"
         );
-        || -> GenResult<()> {
+        _ = || -> GenResult<()> {
             fs::remove_file(PathBuf::from(NON_RELEVANT_EVENTS_PATH))?;
             fs::remove_file(PathBuf::from(RELEVANT_EVENTS_PATH))?;
             Ok(())
-        }()
-        .info("Removing partial shifts");
+        }();
         let found_shifts = load_previous_month_shifts(&driver, 2).await?;
         debug!("Found a total of {} shifts", found_shifts.len());
         let mut found_shifts_split = split_relevant_shifts(found_shifts);
@@ -333,7 +332,7 @@ async fn main_loop(receiver: &mut Receiver<StartReason>, instance: ArcUserInstan
 
         USER_PROPERTIES.replace(Some(instance.user_data.load_full()));
         GENERAL_PROPERTIES.replace(Some(instance.general_settings.load_full()));
-        let (_user, properties) = get_instance().expect("Failed to get instance data");
+        let (_user, properties) = get_instance();
 
         create_delete_lock(Some(&continue_execution)).warn("Creating Lock file");
 
@@ -474,7 +473,7 @@ async fn main() -> GenResult<()> {
 
     let args = Args::parse();
 
-    let db = Database::connect("postgres://postgres:123qwerty@localhost/postgres")
+    let db = Database::connect(&var("DB_URL")?)
         .await
         .unwrap();
     let user = ArcUserInstanceData::load_user(&db, "25348")

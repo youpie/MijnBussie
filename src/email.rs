@@ -64,8 +64,8 @@ Does not load defaults if they are not found and will just error
 If kuma is true, it adds KUMA_ to the var names to find ones specific for KUMA
 */
 impl EnvMailVariables {
-    pub fn new() -> GenResult<Self> {
-        let (user, properties) = get_instance()?;
+    pub fn new() -> Self {
+        let (user, properties) = get_instance();
         let email_properties = properties.general_email_properties.clone();
         let smtp_server = email_properties.smtp_server;
         let smtp_username = email_properties.smtp_username;
@@ -78,7 +78,7 @@ impl EnvMailVariables {
         let send_error_mail = user.user_properties.send_error_mail;
         let send_welcome_mail = user.user_properties.send_welcome_mail;
         let send_failed_signin_mail = user.user_properties.send_failed_signin_mail;
-        Ok(Self {
+        Self {
             smtp_server,
             smtp_username,
             smtp_password,
@@ -90,10 +90,10 @@ impl EnvMailVariables {
             send_error_mail,
             send_welcome_mail,
             send_failed_signin_mail,
-        })
+        }
     }
-    pub fn new_kuma() -> GenResult<Self> {
-        let (user, properties) = get_instance()?;
+    pub fn new_kuma() -> Self {
+        let (user, properties) = get_instance();
         let kuma_properties = properties.kuma_properties.clone();
         let smtp_server = kuma_properties.kuma_email_properties.smtp_server;
         let smtp_username = kuma_properties.kuma_email_properties.smtp_username;
@@ -106,7 +106,7 @@ impl EnvMailVariables {
         let send_error_mail = user.user_properties.send_error_mail;
         let send_welcome_mail = user.user_properties.send_welcome_mail;
         let send_failed_signin_mail = user.user_properties.send_failed_signin_mail;
-        Ok(Self {
+        Self {
             smtp_server,
             smtp_username,
             smtp_password,
@@ -118,7 +118,7 @@ impl EnvMailVariables {
             send_error_mail,
             send_welcome_mail,
             send_failed_signin_mail,
-        })
+        }
     }
 }
 
@@ -132,7 +132,7 @@ pub fn send_emails(
     current_shifts: Vec<Shift>,
     previous_shifts: Vec<Shift>,
 ) -> GenResult<Vec<Shift>> {
-    let env = EnvMailVariables::new()?;
+    let env = EnvMailVariables::new();
     let mailer = load_mailer(&env)?;
     if previous_shifts.is_empty() {
         // if the previous were empty, just return the list of current shifts as all new
@@ -330,7 +330,7 @@ fn create_send_new_email(
 }
 
 fn create_footer(only_url: bool) -> GenResult<String> {
-    let (_user, properties) = get_instance()?;
+    let (_user, properties) = get_instance();
     let footer_text = r#"<tr>
       <td style="background-color:#FFFFFF; text-align:center; padding-top:0px;font-size:12px;">
         <a style="color:#9a9996;">{footer_text}
@@ -346,7 +346,7 @@ fn create_footer(only_url: bool) -> GenResult<String> {
       </tr>"#;
     let domain = &properties.ical_domain;
     let url = Url::parse(domain)?;
-    let url = url.join(&create_ical_filename()?)?;
+    let url = url.join(&create_ical_filename())?;
     let admin_email = &properties.support_mail;
     let return_value = match only_url {
         true => url.to_string(),
@@ -422,7 +422,7 @@ Composes and sends email of found errors, in plaintext
 List of errors can be as long as possible, but for now is always 3
 */
 pub fn send_errors(errors: &Vec<GenError>, name: &str) -> GenResult<()> {
-    let env = EnvMailVariables::new()?;
+    let env = EnvMailVariables::new();
     if !env.send_error_mail {
         info!("tried to send error mail, but is disabled");
         return Ok(());
@@ -447,7 +447,7 @@ pub fn send_errors(errors: &Vec<GenError>, name: &str) -> GenResult<()> {
 }
 
 pub fn send_gecko_error_mail<T: std::fmt::Debug>(error: WebDriverResult<T>) -> GenResult<()> {
-    let env = EnvMailVariables::new()?;
+    let env = EnvMailVariables::new();
     if !env.send_error_mail {
         info!("tried to send GECKO error mail, but is disabled");
         return Ok(());
@@ -478,7 +478,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
         return Ok(());
     }
 
-    let env = EnvMailVariables::new()?;
+    let env = EnvMailVariables::new();
 
     if !env.send_welcome_mail && !force {
         info!("Wanted to send welcome mail. But it is disabled");
@@ -486,7 +486,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     }
 
     let mailer = load_mailer(&env)?;
-    let (_user, properties) = get_instance()?;
+    let (_user, properties) = get_instance();
 
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let onboarding_html = fs::read_to_string("./templates/onboarding_base.html").unwrap();
@@ -500,7 +500,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     let webcal_rewrite_url = format!(
         "{rewrite_url}{}",
         if !rewrite_url.is_empty() {
-            create_ical_filename().unwrap_or_default()
+            create_ical_filename()
         } else {
             agenda_url_webcal.clone()
         }
@@ -562,14 +562,14 @@ pub fn send_failed_signin_mail(
     error: &IncorrectCredentialsCount,
     first_time: bool,
 ) -> GenResult<()> {
-    let env = EnvMailVariables::new()?;
+    let env = EnvMailVariables::new();
     if !env.send_failed_signin_mail {
         return Ok(());
     }
 
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let login_failure_html = fs::read_to_string("./templates/failed_signin.html").unwrap();
-    let (_user, properties) = get_instance()?;
+    let (_user, properties) = get_instance();
     info!("Sending failed sign in mail");
     let mailer = load_mailer(&env)?;
     let still_not_working_modifier = if first_time { "" } else { "nog steeds " };
@@ -626,7 +626,7 @@ pub fn send_failed_signin_mail(
 }
 
 pub fn send_sign_in_succesful() -> GenResult<()> {
-    let env = EnvMailVariables::new()?;
+    let env = EnvMailVariables::new();
 
     if !env.send_error_mail {
         return Ok(());
@@ -706,7 +706,7 @@ mod tests {
     }
 
     fn get_mailer() -> GenResult<(EnvMailVariables, SmtpTransport)> {
-        let env = EnvMailVariables::new()?;
+        let env = EnvMailVariables::new();
         let mailer = load_mailer(&env)?;
         Ok((env, mailer))
     }

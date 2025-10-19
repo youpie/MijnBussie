@@ -109,7 +109,7 @@ pub struct ApplicationState {
 }
 
 pub async fn send_heartbeat(reason: &FailureType) -> GenResult<()> {
-    let (user, properties) = get_instance()?;
+    let (user, properties) = get_instance();
     let personeelsnummer = &user.user_name;
     let mut request_url: Url = properties.kuma_properties.domain.clone().parse()?;
     request_url.set_path(&format!("/api/push/{personeelsnummer}"));
