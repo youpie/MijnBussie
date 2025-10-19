@@ -14,8 +14,6 @@ use sea_orm::{DatabaseConnection, DerivePartialModel, EntityTrait, QueryFilter};
 
 use crate::GenResult;
 
-const DEFAULT_PREFERENCES_ID: i32 = 1;
-
 #[derive(Debug)]
 pub struct ArcUserInstanceData {
     pub user_data: ArcSwap<UserData>,
@@ -46,7 +44,10 @@ impl ArcUserInstanceData {
         {
             Ok(custom_properties)
         } else {
-            Ok(GeneralProperties::get(db, DEFAULT_PREFERENCES_ID)
+            let properties_id = var("DEFAULT_PROPERTIES_ID").ok()
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(1);
+            Ok(GeneralProperties::get(db, properties_id)
                 .await?
                 .expect("No default preferences"))
         }
