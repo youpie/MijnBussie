@@ -15,21 +15,27 @@ use sea_orm::{DatabaseConnection, DerivePartialModel, EntityTrait, QueryFilter};
 use crate::GenResult;
 
 #[derive(Debug)]
-pub struct ArcUserInstanceData {
+pub struct UserInstanceData {
     pub user_data: ArcSwap<UserData>,
     pub general_settings: ArcSwap<GeneralProperties>,
+    pub custom_settings: bool,
 }
 
-impl ArcUserInstanceData {
-    pub async fn load_user(db: &DatabaseConnection, username: &str) -> GenResult<Option<Self>> {
+impl UserInstanceData {
+    pub async fn load_user(db: &DatabaseConnection, username: &str, default_properties: Option<Arc<GeneralProperties>>) -> GenResult<Option<Self>> {
         let userdata = UserData::get_from_username(db, username).await?;
         if let Some(user_data) = userdata {
             let custom_properties_id = user_data.custom_general_properties.clone();
+            let general_settings = if let Some(default) = default_properties && custom_properties_id.is_none() {
+                ArcSwap::new(default)
+            } else {
+                ArcSwap::from_pointee(
+                    Self::load_preferences(db, custom_properties_id).await?)
+            };
             Ok(Some(Self {
                 user_data: ArcSwap::from_pointee(user_data),
-                general_settings: ArcSwap::from_pointee(
-                    Self::load_preferences(db, custom_properties_id).await?,
-                ),
+                general_settings,
+                custom_settings: custom_properties_id.is_some()
             }))
         } else {
             Ok(None)

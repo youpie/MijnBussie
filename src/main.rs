@@ -43,7 +43,7 @@ use crate::health::update_calendar_exit_code;
 use crate::ical::*;
 use crate::parsing::*;
 use crate::shift::*;
-use crate::variables::ArcUserInstanceData;
+use crate::variables::UserInstanceData;
 use crate::variables::GeneralProperties;
 use crate::variables::UserData;
 use crate::watchdog::watchdog;
@@ -325,7 +325,7 @@ fn create_delete_lock(start_reason: Option<&StartReason>) -> GenResult<()> {
 This starts the WebDriver session
 Loads the main logic, and retries if it fails
 */
-async fn main_loop(receiver: &mut Receiver<StartReason>, instance: ArcUserInstanceData) {
+async fn main_loop(receiver: &mut Receiver<StartReason>, instance: UserInstanceData) {
     loop {
         debug!("Waiting for notification");
         let continue_execution = receiver.recv().await.expect("Notification channel closed");
@@ -476,7 +476,7 @@ async fn main() -> GenResult<()> {
     let db = Database::connect(&var("DB_URL")?)
         .await
         .unwrap();
-    let user = ArcUserInstanceData::load_user(&db, "25348")
+    let user = UserInstanceData::load_user(&db, "25348")
         .await?
         .expect("No user found");
     watchdog(&db).await?;
