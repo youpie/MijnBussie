@@ -11,7 +11,7 @@ use serde::Serialize;
 use tokio::{sync::mpsc::Sender, time::sleep};
 
 use crate::{
-    GenResult, create_path, email::send_welcome_mail, errors::ResultLog, get_instance,
+    GenResult, create_path, email::send_welcome_mail, errors::ResultLog, get_data,
     ical::get_ical_path, kuma,
 };
 
@@ -27,7 +27,7 @@ pub enum StartReason {
 }
 
 fn get_execution_properties() -> (Duration, StartMinute) {
-    let (user, _properties) = get_instance();
+    let (user, _properties) = get_data();
     let cycle_time = (user.user_properties.execution_interval_minutes * 60) as u64;
     let starting_minute = || -> GenResult<u8> {
         let path = create_path("starting_minute");
@@ -69,7 +69,7 @@ pub async fn execution_manager(tx: Sender<StartReason>, instant_run: bool) {
 }
 
 pub async fn start_pipe(tx: Sender<StartReason>) -> GenResult<()> {
-    let (user, _properties) = get_instance();
+    let (user, _properties) = get_data();
     let pipe_path = create_path("pipe");
     if pipe_path.exists() {
         info!("Previous pipe file found, removing");

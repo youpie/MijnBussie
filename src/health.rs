@@ -8,9 +8,9 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    BASE_DIRECTORY, FailureType, GenResult,
+    FailureType, GenResult, create_path,
     errors::SignInFailure,
-    get_instance,
+    get_data,
     ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
     shift::Shift,
 };
@@ -89,9 +89,7 @@ impl ApplicationLogbook {
         Ok(())
     }
     fn create_path() -> PathBuf {
-        let mut path = PathBuf::from(BASE_DIRECTORY);
-        path.push("logbook.json");
-        path
+        create_path("logbook.json")
     }
 }
 
@@ -109,7 +107,7 @@ pub struct ApplicationState {
 }
 
 pub async fn send_heartbeat(reason: &FailureType) -> GenResult<()> {
-    let (user, properties) = get_instance();
+    let (user, properties) = get_data();
     let personeelsnummer = &user.user_name;
     let mut request_url: Url = properties.kuma_properties.domain.clone().parse()?;
     request_url.set_path(&format!("/api/push/{personeelsnummer}"));

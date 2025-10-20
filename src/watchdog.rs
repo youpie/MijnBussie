@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     sync::{Arc, LazyLock},
 };
@@ -14,7 +15,7 @@ use tokio::{
 };
 
 use crate::{
-    GenResult,
+    GENERAL_PROPERTIES, GenResult, USER_PROPERTIES,
     execution::StartReason,
     main_loop,
     variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
@@ -36,7 +37,11 @@ pub struct UserInstance {
 impl UserInstance {
     pub async fn new(user_data: UserInstanceData) -> Self {
         let channel = channel(1);
-        let thread = tokio::spawn(main_loop(channel.1, user_data.clone()));
+        let data_clone = user_data.clone();
+        let thread = tokio::spawn(USER_PROPERTIES.scope(
+            RefCell::new(None),
+            GENERAL_PROPERTIES.scope(RefCell::new(None), main_loop(channel.1, data_clone)),
+        ));
         Self {
             user_instance_data: user_data,
             thread_handle: thread,
@@ -59,7 +64,7 @@ pub async fn watchdog(db: &DatabaseConnection) -> GenResult<()> {
     let users = UserData::get_all_usernames(db).await?;
     start_stop_instances(db, &mut instances, &users).await?;
     info!("Users: {users:#?}");
-    instances
+    _ = instances
         .get(users.first().unwrap())
         .unwrap()
         .sender

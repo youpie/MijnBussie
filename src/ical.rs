@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
-    FailureType, GenResult, Shift, ShiftState, create_ical_filename, create_shift_link,
-    get_instance, set_get_name,
+    FailureType, GenResult, Shift, ShiftState, create_ical_filename, create_shift_link, get_data,
+    set_get_name,
 };
 use crate::{email::TIME_DESCRIPTION, errors::ResultLog};
 use chrono::{Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
@@ -203,7 +203,7 @@ pub struct PreviousShiftInformation {
 }
 
 pub fn get_ical_path() -> GenResult<PathBuf> {
-    let (_user, properties) = get_instance();
+    let (_user, properties) = get_data();
     let mut ical_path = PathBuf::new();
     ical_path.push(&properties.calendar_target);
     ical_path.push(create_ical_filename());
@@ -321,7 +321,7 @@ pub fn create_ical(
     metadata: &Vec<Shift>,
     previous_exit_code: &FailureType,
 ) -> GenResult<String> {
-    let (user, properties) = get_instance();
+    let (user, properties) = get_data();
     let metadata_shifts_hashmap: HashMap<i64, &Shift> =
         metadata.into_iter().map(|x| (x.magic_number, x)).collect();
     let name = set_get_name(None);

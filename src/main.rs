@@ -1,4 +1,3 @@
-const BASE_DIRECTORY: &str = "kuma/";
 const MAIN_URL: &str = "webcom.connexxion.nl";
 // the ;x should be equal to the ammount of fallback URLs
 const FALLBACK_URL: [&str; 2] = [
@@ -25,18 +24,14 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 use thirtyfour::prelude::*;
 use time::macros::format_description;
-use tokio::spawn;
-use tokio::sync::RwLock;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::channel;
+use tokio::task_local;
 
 use crate::errors::FailureType;
 use crate::errors::IncorrectCredentialsCount;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
 use crate::execution::StartReason;
-use crate::execution::execution_manager;
-use crate::execution::start_pipe;
 use crate::health::ApplicationLogbook;
 use crate::health::send_heartbeat;
 use crate::health::update_calendar_exit_code;
@@ -67,9 +62,33 @@ type StdLock<T> = std::sync::RwLock<T>;
 
 static NAME: LazyLock<StdLock<Option<String>>> = LazyLock::new(|| StdLock::new(None));
 
-thread_local! {
-    pub static USER_PROPERTIES: StdLock<Option<Arc<UserData>>> = StdLock::new(None);
-    pub static GENERAL_PROPERTIES: StdLock<Option<Arc<GeneralProperties>>> = StdLock::new(None);
+task_local! {
+    pub static USER_PROPERTIES: RefCell<Option<Arc<UserData>>>;
+    pub static GENERAL_PROPERTIES: RefCell<Option<Arc<GeneralProperties>>>;
+}
+
+// Get thread specific data
+pub fn get_data() -> (Arc<UserData>, Arc<GeneralProperties>) {
+    let user = USER_PROPERTIES
+        .get()
+        .borrow()
+        .clone()
+        .expect("Failed to get UserData");
+    let properties = GENERAL_PROPERTIES
+        .get()
+        .borrow()
+        .clone()
+        .expect("Failed to get SystemData");
+    (user, properties)
+}
+
+// Sets thread specific data, also returns new values
+async fn set_data(instance: &UserInstanceData) -> (Arc<UserData>, Arc<GeneralProperties>) {
+    let user_data = Arc::new(instance.user_data.read().await.clone());
+    let settings_data = Arc::new(instance.general_settings.read().await.clone());
+    *USER_PROPERTIES.get().borrow_mut() = Some(user_data.clone());
+    *GENERAL_PROPERTIES.get().borrow_mut() = Some(settings_data.clone());
+    (user_data, settings_data)
 }
 
 #[derive(Parser)]
@@ -82,7 +101,7 @@ struct Args {
 }
 
 fn create_shift_link(shift: &Shift, include_domain: bool) -> GenResult<String> {
-    let (_user, properties) = get_instance();
+    let (_user, properties) = get_data();
     let date_format = format_description!("[day]-[month]-[year]");
     let formatted_date = shift.date.format(date_format)?;
     let domain = match include_domain {
@@ -106,7 +125,7 @@ fn create_shift_link(shift: &Shift, include_domain: bool) -> GenResult<String> {
 }
 
 fn create_ical_filename() -> String {
-    let (user, _properties) = get_instance();
+    let (user, _properties) = get_data();
     match &user.file_name {
         value if value.is_empty() => format!("{}.ics", user.user_name),
         _ => format!("{}.ics", user.file_name),
@@ -165,9 +184,12 @@ async fn wait_untill_redirect(driver: &WebDriver) -> GenResult<()> {
 }
 
 pub fn create_path(filename: &str) -> PathBuf {
-    let (_user, properties) = get_instance();
+    let (user, properties) = get_data();
     let mut path = PathBuf::from(&properties.file_target);
+    path.push(&user.user_name);
+    _ = fs::create_dir_all(&path);
     path.push(filename);
+
     path
 }
 
@@ -183,7 +205,7 @@ fn set_get_name(set_new_name: Option<String>) -> String {
     }
     let mut name = std::fs::read_to_string(&path)
         .ok()
-        .unwrap_or("FOUT BIJ LADEN VAN NAAM".to_owned());
+        .unwrap_or("Onbekend".to_owned());
 
     // Write new name if previous name is different (deadname protection lmao)
     if let Some(new_name) = set_new_name
@@ -198,23 +220,13 @@ fn set_get_name(set_new_name: Option<String>) -> String {
     name
 }
 
-pub fn get_instance() -> (Arc<UserData>, Arc<GeneralProperties>) {
-    let user = USER_PROPERTIES
-        .with(|user| user.read().unwrap().clone())
-        .expect("Failed to get UserData");
-    let properties = GENERAL_PROPERTIES
-        .with(|user| user.read().unwrap().clone())
-        .expect("Failed to get Properties");
-    (user, properties)
-}
-
 // Main program logic that has to run, if it fails it will all be reran.
 async fn main_program(
     driver: &WebDriver,
     retry_count: usize,
     logbook: &mut ApplicationLogbook,
 ) -> GenResult<()> {
-    let (user, _properties) = get_instance();
+    let (user, _properties) = get_data();
     let personeelsnummer = &user.personeelsnummer;
     let password = &user.password;
     driver.delete_all_cookies().await?;
@@ -336,19 +348,7 @@ async fn main_loop(receiver: Receiver<StartReason>, instance: UserInstanceData) 
             .await
             .expect("Notification channel closed");
 
-        USER_PROPERTIES.with(|properties| {
-            properties
-                .write()
-                .unwrap()
-                .replace(Arc::new(instance.user_data.blocking_read().clone()))
-        });
-        GENERAL_PROPERTIES.with(|properties| {
-            properties
-                .write()
-                .unwrap()
-                .replace(Arc::new(instance.general_settings.blocking_read().clone()))
-        });
-        let (_user, properties) = get_instance();
+        let (_user, properties) = set_data(&instance).await;
 
         create_delete_lock(Some(&continue_execution)).warn("Creating Lock file");
 

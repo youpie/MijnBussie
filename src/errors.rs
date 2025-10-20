@@ -4,12 +4,11 @@ use std::{
     hash::{DefaultHasher, Hash, Hasher},
 };
 
-use dotenvy::var;
 use serde::{Deserialize, Serialize};
 use thirtyfour::{By, WebDriver};
 use thiserror::Error;
 
-use crate::{GenResult, create_path, email};
+use crate::{GenResult, create_path, email, get_data};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Error, Default)]
 pub enum SignInFailure {
@@ -72,9 +71,7 @@ pub async fn check_sign_in_error(driver: &WebDriver) -> GenResult<FailureType> {
             info!("Found error banner: {:?}", &sign_in_error_type);
             Ok(FailureType::SignInFailed(sign_in_error_type))
         }
-        Err(_) => {
-            Err("Geen fout banner gevonden".into())
-        }
+        Err(_) => Err("Geen fout banner gevonden".into()),
     }
 }
 
@@ -103,7 +100,7 @@ fn get_sign_in_error_type(text: &str) -> SignInFailure {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct IncorrectCredentialsCount {
-    pub retry_count: usize,
+    pub retry_count: i32,
     pub error: Option<SignInFailure>,
     pub previous_password_hash: Option<u64>,
 }
@@ -127,7 +124,8 @@ impl IncorrectCredentialsCount {
     }
 
     fn get_password_hash() -> GenResult<u64> {
-        let current_password = var("PASSWORD")?;
+        let (user, _properties) = get_data();
+        let current_password = user.password.clone();
         let mut hasher = DefaultHasher::new();
         current_password.hash(&mut hasher);
         Ok(hasher.finish())
@@ -135,14 +133,9 @@ impl IncorrectCredentialsCount {
 
     // If returning None, continue execution
     pub fn sign_in_failed_check(&mut self) -> GenResult<Option<SignInFailure>> {
-        let resend_error_mail_count: usize = var("SIGNIN_FAIL_MAIL_REPEAT")
-            .unwrap_or("24".to_string())
-            .parse()
-            .unwrap_or(24);
-        let sign_in_attempt_reduce: usize = var("SIGNIN_FAILED_REDUCE")
-            .unwrap_or("2".to_string())
-            .parse()
-            .unwrap_or(2);
+        let (_user, properties) = get_data();
+        let resend_error_mail_count = properties.signin_fail_mail_reduce;
+        let sign_in_attempt_reduce = properties.signin_fail_execution_reduce;
         let return_value: Option<SignInFailure>;
         if let Some(previous_password_hash) = self.previous_password_hash
             && let Ok(current_password_hash) = Self::get_password_hash()
@@ -158,8 +151,7 @@ impl IncorrectCredentialsCount {
             Some(SignInFailure::IncorrectCredentials) => {
                 info!("Permanently Skipping execution due to incorrect credentials");
                 self.error.clone()
-            
-            },
+            }
             _ => {
                 if self.retry_count % sign_in_attempt_reduce == 0 {
                     warn!(

@@ -1,5 +1,5 @@
 use crate::errors::IncorrectCredentialsCount;
-use crate::{GenError, GenResult, ShiftState, get_instance};
+use crate::{GenError, GenResult, ShiftState, get_data};
 use lettre::{
     Message, SmtpTransport, Transport, message::header::ContentType,
     transport::smtp::authentication::Credentials,
@@ -65,7 +65,7 @@ If kuma is true, it adds KUMA_ to the var names to find ones specific for KUMA
 */
 impl EnvMailVariables {
     pub fn new() -> Self {
-        let (user, properties) = get_instance();
+        let (user, properties) = get_data();
         let email_properties = properties.general_email_properties.clone();
         let smtp_server = email_properties.smtp_server;
         let smtp_username = email_properties.smtp_username;
@@ -93,7 +93,7 @@ impl EnvMailVariables {
         }
     }
     pub fn new_kuma() -> Self {
-        let (user, properties) = get_instance();
+        let (user, properties) = get_data();
         let kuma_properties = properties.kuma_properties.clone();
         let smtp_server = kuma_properties.kuma_email_properties.smtp_server;
         let smtp_username = kuma_properties.kuma_email_properties.smtp_username;
@@ -330,7 +330,7 @@ fn create_send_new_email(
 }
 
 fn create_footer(only_url: bool) -> GenResult<String> {
-    let (_user, properties) = get_instance();
+    let (_user, properties) = get_data();
     let footer_text = r#"<tr>
       <td style="background-color:#FFFFFF; text-align:center; padding-top:0px;font-size:12px;">
         <a style="color:#9a9996;">{footer_text}
@@ -486,7 +486,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     }
 
     let mailer = load_mailer(&env)?;
-    let (_user, properties) = get_instance();
+    let (_user, properties) = get_data();
 
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let onboarding_html = fs::read_to_string("./templates/onboarding_base.html").unwrap();
@@ -569,7 +569,7 @@ pub fn send_failed_signin_mail(
 
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let login_failure_html = fs::read_to_string("./templates/failed_signin.html").unwrap();
-    let (_user, properties) = get_instance();
+    let (_user, properties) = get_data();
     info!("Sending failed sign in mail");
     let mailer = load_mailer(&env)?;
     let still_not_working_modifier = if first_time { "" } else { "nog steeds " };

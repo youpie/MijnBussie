@@ -2,7 +2,7 @@ use crate::{
     GenResult, Shift,
     email::{DATE_DESCRIPTION, TIME_DESCRIPTION},
     errors::ResultLog,
-    get_instance,
+    get_data,
     shift::ShiftState,
 };
 use thirtyfour::{WebDriver, WebElement, error::WebDriverResult, prelude::*};
@@ -117,7 +117,7 @@ https://gitlab.gnome.org/GNOME/gnome-calendar/-/issues/944
 Not needed for most people
 */
 pub fn split_night_shift(shifts: &Vec<Shift>) -> GenResult<Vec<Shift>> {
-    let (user, _properties) = get_instance();
+    let (user, _properties) = get_data();
     let split = user.user_properties.split_night_shift;
     let mut temp_shift: Vec<Shift> = vec![];
     if !split {
@@ -144,7 +144,7 @@ pub fn split_night_shift(shifts: &Vec<Shift>) -> GenResult<Vec<Shift>> {
 
 // Function to stop shifts at midnight. This is a request from Jerry
 pub fn stop_shift_at_midnight(shifts: &Vec<Shift>) -> GenResult<Vec<Shift>> {
-    let (user, _properties) = get_instance();
+    let (user, _properties) = get_data();
     let stop = user.user_properties.stop_midnight_shift;
     let mut temp_shifts: Vec<Shift> = vec![];
     if !stop {
