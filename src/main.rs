@@ -23,10 +23,10 @@ use std::fs::write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::sync::RwLock;
 use thirtyfour::prelude::*;
 use time::macros::format_description;
 use tokio::spawn;
+use tokio::sync::RwLock;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::mpsc::channel;
 
@@ -43,9 +43,9 @@ use crate::health::update_calendar_exit_code;
 use crate::ical::*;
 use crate::parsing::*;
 use crate::shift::*;
-use crate::variables::UserInstanceData;
 use crate::variables::GeneralProperties;
 use crate::variables::UserData;
+use crate::variables::UserInstanceData;
 use crate::watchdog::watchdog;
 
 pub mod email;
@@ -63,11 +63,13 @@ mod watchdog;
 type GenResult<T> = Result<T, GenError>;
 type GenError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-static NAME: LazyLock<RwLock<Option<String>>> = LazyLock::new(|| RwLock::new(None));
+type StdLock<T> = std::sync::RwLock<T>;
+
+static NAME: LazyLock<StdLock<Option<String>>> = LazyLock::new(|| StdLock::new(None));
 
 thread_local! {
-    pub static USER_PROPERTIES: RefCell<Option<Arc<UserData>>> = RefCell::new(None);
-    pub static GENERAL_PROPERTIES: RefCell<Option<Arc<GeneralProperties>>> = RefCell::new(None);
+    pub static USER_PROPERTIES: StdLock<Option<Arc<UserData>>> = StdLock::new(None);
+    pub static GENERAL_PROPERTIES: StdLock<Option<Arc<GeneralProperties>>> = StdLock::new(None);
 }
 
 #[derive(Parser)]
@@ -198,10 +200,10 @@ fn set_get_name(set_new_name: Option<String>) -> String {
 
 pub fn get_instance() -> (Arc<UserData>, Arc<GeneralProperties>) {
     let user = USER_PROPERTIES
-        .with_borrow(|user| user.as_ref().cloned())
+        .with(|user| user.read().unwrap().clone())
         .expect("Failed to get UserData");
     let properties = GENERAL_PROPERTIES
-        .with_borrow(|user| user.as_ref().cloned())
+        .with(|user| user.read().unwrap().clone())
         .expect("Failed to get Properties");
     (user, properties)
 }
@@ -325,13 +327,27 @@ fn create_delete_lock(start_reason: Option<&StartReason>) -> GenResult<()> {
 This starts the WebDriver session
 Loads the main logic, and retries if it fails
 */
-async fn main_loop(receiver: &mut Receiver<StartReason>, instance: UserInstanceData) {
+async fn main_loop(receiver: Receiver<StartReason>, instance: UserInstanceData) {
+    let mut reciever_borrow = receiver;
     loop {
         debug!("Waiting for notification");
-        let continue_execution = receiver.recv().await.expect("Notification channel closed");
+        let continue_execution = reciever_borrow
+            .recv()
+            .await
+            .expect("Notification channel closed");
 
-        USER_PROPERTIES.replace(Some(instance.user_data.load_full()));
-        GENERAL_PROPERTIES.replace(Some(instance.general_settings.load_full()));
+        USER_PROPERTIES.with(|properties| {
+            properties
+                .write()
+                .unwrap()
+                .replace(Arc::new(instance.user_data.blocking_read().clone()))
+        });
+        GENERAL_PROPERTIES.with(|properties| {
+            properties
+                .write()
+                .unwrap()
+                .replace(Arc::new(instance.general_settings.blocking_read().clone()))
+        });
         let (_user, properties) = get_instance();
 
         create_delete_lock(Some(&continue_execution)).warn("Creating Lock file");
@@ -471,35 +487,36 @@ async fn main() -> GenResult<()> {
     pretty_env_logger::init();
     info!("Starting Webcom Ical");
 
-    let args = Args::parse();
+    // let args = Args::parse();
 
-    let db = Database::connect(&var("DB_URL")?)
+    let db = Database::connect(&var("DATABASE_URL")?)
         .await
-        .unwrap();
-    let user = UserInstanceData::load_user(&db, "25348")
-        .await?
-        .expect("No user found");
+        .expect("Could not connect to database");
+    // let user = UserInstanceData::load_user(&db, "25348", None)
+    //     .await?
+    //     .expect("No user found");
     watchdog(&db).await?;
 
-    let (tx, mut rx) = channel(1);
-    let tx_clone = tx.clone();
-    let instant_run = args.instant_run;
-    // If the single run argument is set, just send a single message so the main loop instantly runs.
-    // Otherwise start the execution manager
-    match args.single_run {
-        false => {
-            spawn(async move { execution_manager(tx, instant_run).await });
-        }
-        true => {
-            tx.send(StartReason::Single).await?;
-        }
-    };
-    let main_program = spawn(async move { main_loop(&mut rx, user).await });
-    if !args.single_run {
-        start_pipe(tx_clone).await.warn("Start pipe");
-    } else {
-        main_program.await.info("Main program");
-    }
+    // let (tx, mut rx) = channel(1);
+    // let tx_clone = tx.clone();
+    // let instant_run = args.instant_run;
+    // // If the single run argument is set, just send a single message so the main loop instantly runs.
+    // // Otherwise start the execution manager
+    // match args.single_run {
+    //     false => {
+    //         spawn(async move { execution_manager(tx, instant_run).await });
+    //     }
+    //     true => {
+    //         tx.send(StartReason::Single).await?;
+    //     }
+    // };
+    // let main_program = spawn(async move { main_loop(rx, user).await });
+    // if !args.single_run {
+    //     start_pipe(tx_clone).await.warn("Start pipe");
+    // } else {
+    //     main_program.await.info("Main program");
+    // }
+    loop {}
     info!("Stopping webcom ical");
     Ok(())
 }

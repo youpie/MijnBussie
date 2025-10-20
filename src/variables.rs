@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use arc_swap::ArcSwap;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use dotenvy::var;
@@ -11,51 +10,40 @@ use entity::{
 use sea_orm::RelationTrait;
 use sea_orm::{ColumnTrait, QuerySelect};
 use sea_orm::{DatabaseConnection, DerivePartialModel, EntityTrait, QueryFilter};
+use tokio::sync::RwLock;
 
 use crate::GenResult;
 
-#[derive(Debug)]
+pub type ThreadShare<T> = Arc<RwLock<T>>;
+
+#[derive(Debug, Clone)]
 pub struct UserInstanceData {
-    pub user_data: ArcSwap<UserData>,
-    pub general_settings: ArcSwap<GeneralProperties>,
-    pub custom_settings: bool,
+    pub user_data: ThreadShare<UserData>,
+    pub general_settings: ThreadShare<GeneralProperties>,
 }
 
 impl UserInstanceData {
-    pub async fn load_user(db: &DatabaseConnection, username: &str, default_properties: Option<Arc<GeneralProperties>>) -> GenResult<Option<Self>> {
+    pub async fn load_user(
+        db: &DatabaseConnection,
+        username: &str,
+        default_properties: Arc<RwLock<GeneralProperties>>,
+    ) -> GenResult<Option<Self>> {
         let userdata = UserData::get_from_username(db, username).await?;
         if let Some(user_data) = userdata {
             let custom_properties_id = user_data.custom_general_properties.clone();
-            let general_settings = if let Some(default) = default_properties && custom_properties_id.is_none() {
-                ArcSwap::new(default)
+            let general_settings = if let Some(custom_id) = custom_properties_id
+                && let Ok(Some(custom_properties)) = GeneralProperties::get(db, custom_id).await
+            {
+                Arc::new(RwLock::new(custom_properties))
             } else {
-                ArcSwap::from_pointee(
-                    Self::load_preferences(db, custom_properties_id).await?)
+                default_properties
             };
             Ok(Some(Self {
-                user_data: ArcSwap::from_pointee(user_data),
+                user_data: Arc::new(RwLock::new(user_data)),
                 general_settings,
-                custom_settings: custom_properties_id.is_some()
             }))
         } else {
             Ok(None)
-        }
-    }
-    async fn load_preferences(
-        db: &DatabaseConnection,
-        custom_id: Option<i32>,
-    ) -> GenResult<GeneralProperties> {
-        if let Some(id) = custom_id
-            && let Some(custom_properties) = GeneralProperties::get(db, id).await?
-        {
-            Ok(custom_properties)
-        } else {
-            let properties_id = var("DEFAULT_PROPERTIES_ID").ok()
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(1);
-            Ok(GeneralProperties::get(db, properties_id)
-                .await?
-                .expect("No default preferences"))
         }
     }
 }
@@ -103,6 +91,16 @@ impl GeneralProperties {
             .into_partial_model()
             .one(db)
             .await?)
+    }
+
+    pub async fn load_default_preferences(db: &DatabaseConnection) -> GenResult<GeneralProperties> {
+        let properties_id = var("DEFAULT_PROPERTIES_ID")
+            .ok()
+            .and_then(|s| s.parse::<i32>().ok())
+            .unwrap_or(1);
+        Ok(GeneralProperties::get(db, properties_id)
+            .await?
+            .expect("No default properties"))
     }
 }
 

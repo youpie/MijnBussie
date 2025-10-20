@@ -7,13 +7,13 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub general_properties_id: i32,
-    pub save_target: String,
+    pub calendar_target: String,
+    pub file_target: String,
     pub ical_domain: String,
     pub webcal_domain: String,
     pub pdf_shift_domain: String,
     pub signin_fail_execution_reduce: i32,
     pub signin_fail_mail_reduce: i32,
-    pub execution_interval_minutes: i32,
     pub expected_execution_time_seconds: i32,
     pub execution_retry_count: i32,
     pub support_mail: String,

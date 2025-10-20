@@ -23,7 +23,7 @@ impl MigrationTrait for Migration {
                     .col(string(UserData::Email))
                     .col(string(UserData::FileName))
                     .col(integer(UserData::UserProperties).not_null())
-                    .col(integer(UserData::CustomGeneralProperties))
+                    .col(integer(UserData::CustomGeneralProperties).null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("user_properties_fk")
