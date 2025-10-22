@@ -16,6 +16,7 @@ pub struct Model {
     pub send_error_mail: bool,
     pub split_night_shift: bool,
     pub stop_midnight_shift: bool,
+    pub execution_minute: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

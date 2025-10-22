@@ -9,14 +9,13 @@ extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
-use clap::Parser;
-use clap::command;
 use dotenvy::dotenv_override;
 use dotenvy::var;
 use email::send_errors;
 use email::send_welcome_mail;
 use sea_orm::Database;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fs;
 use std::fs::write;
 use std::path::PathBuf;
@@ -24,6 +23,7 @@ use std::sync::Arc;
 use std::sync::LazyLock;
 use thirtyfour::prelude::*;
 use time::macros::format_description;
+use tokio::sync::RwLock;
 use tokio::sync::mpsc::Receiver;
 use tokio::task_local;
 
@@ -32,6 +32,7 @@ use crate::errors::IncorrectCredentialsCount;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
 use crate::execution::StartReason;
+use crate::execution::execution_timer;
 use crate::health::ApplicationLogbook;
 use crate::health::send_heartbeat;
 use crate::health::update_calendar_exit_code;
@@ -41,6 +42,7 @@ use crate::shift::*;
 use crate::variables::GeneralProperties;
 use crate::variables::UserData;
 use crate::variables::UserInstanceData;
+use crate::watchdog::InstanceMap;
 use crate::watchdog::watchdog;
 
 pub mod email;
@@ -89,15 +91,6 @@ async fn set_data(instance: &UserInstanceData) -> (Arc<UserData>, Arc<GeneralPro
     *USER_PROPERTIES.get().borrow_mut() = Some(user_data.clone());
     *GENERAL_PROPERTIES.get().borrow_mut() = Some(settings_data.clone());
     (user_data, settings_data)
-}
-
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(short, long)]
-    instant_run: bool,
-    #[arg(short, long)]
-    single_run: bool,
 }
 
 fn create_shift_link(shift: &Shift, include_domain: bool) -> GenResult<String> {
@@ -495,7 +488,9 @@ async fn main() -> GenResult<()> {
     // let user = UserInstanceData::load_user(&db, "25348", None)
     //     .await?
     //     .expect("No user found");
-    watchdog(&db).await?;
+    let instances: Arc<RwLock<InstanceMap>> = Arc::new(RwLock::new(HashMap::new()));
+    tokio::spawn(execution_timer(instances.clone()));
+    watchdog(instances.clone(), &db).await?;
 
     // let (tx, mut rx) = channel(1);
     // let tx_clone = tx.clone();
@@ -516,7 +511,6 @@ async fn main() -> GenResult<()> {
     // } else {
     //     main_program.await.info("Main program");
     // }
-    loop {}
     info!("Stopping webcom ical");
     Ok(())
 }

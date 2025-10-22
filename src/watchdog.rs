@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use dotenvy::var;
 use sea_orm::DatabaseConnection;
+use time::Time;
 use tokio::{
     sync::{
         RwLock,
@@ -16,7 +16,7 @@ use tokio::{
 
 use crate::{
     GENERAL_PROPERTIES, GenResult, USER_PROPERTIES,
-    execution::StartReason,
+    execution::{StartReason, calculate_next_execution_time, get_system_time},
     main_loop,
     variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
 };
@@ -32,6 +32,7 @@ pub struct UserInstance {
     pub user_instance_data: UserInstanceData,
     pub thread_handle: JoinHandle<()>,
     pub sender: Sender<StartReason>,
+    pub execution_time: Time,
 }
 
 impl UserInstance {
@@ -42,43 +43,49 @@ impl UserInstance {
             RefCell::new(None),
             GENERAL_PROPERTIES.scope(RefCell::new(None), main_loop(channel.1, data_clone)),
         ));
+        let execution_time = calculate_next_execution_time(user_data.user_data.clone(), true).await;
+        info!(
+            "Executing user {} in {} minutes",
+            user_data.user_data.read().await.user_name,
+            get_system_time()
+                .duration_until(execution_time)
+                .whole_minutes()
+        );
         Self {
             user_instance_data: user_data,
             thread_handle: thread,
             sender: channel.0,
+            execution_time: execution_time,
         }
     }
 }
 
 type InstanceName = String;
 
-type InstanceMap = HashMap<InstanceName, UserInstance>;
+pub type InstanceMap = HashMap<InstanceName, UserInstance>;
 
 type RwCell<T> = LazyLock<RwLock<Option<T>>>;
 
 static DEFAULT_PROPERTIES: RwCell<ThreadShare<GeneralProperties>> =
     LazyLock::new(|| RwLock::new(None));
 
-pub async fn watchdog(db: &DatabaseConnection) -> GenResult<()> {
-    let mut instances: InstanceMap = HashMap::new();
+pub async fn watchdog(
+    instances: Arc<RwLock<InstanceMap>>,
+    db: &DatabaseConnection,
+) -> GenResult<()> {
     let users = UserData::get_all_usernames(db).await?;
-    start_stop_instances(db, &mut instances, &users).await?;
+    start_stop_instances(db, instances, &users).await?;
     info!("Users: {users:#?}");
-    _ = instances
-        .get(users.first().unwrap())
-        .unwrap()
-        .sender
-        .send(StartReason::Timer)
-        .await;
     loop {}
     Ok(())
 }
 
 async fn start_stop_instances(
     db: &DatabaseConnection,
-    active_instances: &mut InstanceMap,
+    active_instances: Arc<RwLock<InstanceMap>>,
     db_users: &Vec<String>,
 ) -> GenResult<()> {
+    let mut active_instances = active_instances.write().await;
     let mut instances_state: HashMap<InstanceName, InstanceState> = HashMap::new();
     for active_instance in &mut *active_instances {
         instances_state.insert(active_instance.0.to_owned(), InstanceState::Remove);
@@ -104,14 +111,14 @@ async fn start_stop_instances(
             .replace(Arc::new(RwLock::new(default_preferences)));
     }
     let instances_to_remove =
-        get_equal_instances(InstanceState::Remove, &instances_state, active_instances);
+        get_equal_instances(InstanceState::Remove, &instances_state, &active_instances);
     let instances_to_refresh =
-        get_equal_instances(InstanceState::Remain, &instances_state, active_instances);
+        get_equal_instances(InstanceState::Remain, &instances_state, &active_instances);
     let instances_to_add =
-        get_equal_instances(InstanceState::New, &instances_state, active_instances);
+        get_equal_instances(InstanceState::New, &instances_state, &active_instances);
 
-    add_instances(db, &instances_to_add, active_instances).await?;
-    stop_instances(&instances_to_remove, active_instances);
+    add_instances(db, &instances_to_add, &mut active_instances).await?;
+    stop_instances(&instances_to_remove, &mut active_instances);
     Ok(())
 }
 

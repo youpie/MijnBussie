@@ -934,17 +934,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ctrlc"
-version = "3.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "881c5d0a13b2f1498e2306e82cbada78390e152d4b1378fb28a84f4dcd0dc4f3"
-dependencies = [
- "dispatch",
- "nix 0.30.1",
- "windows-sys 0.61.0",
-]
-
-[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1058,12 +1047,6 @@ dependencies = [
  "crypto-common",
  "subtle",
 ]
-
-[[package]]
-name = "dispatch"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
 name = "displaydoc"
@@ -1959,7 +1942,7 @@ checksum = "6d4a96fc265888dd50c8a1aaebd31887058ef740095d126299c48051c681bcc5"
 dependencies = [
  "flurry",
  "lazy_static",
- "nix 0.24.3",
+ "nix",
  "rand 0.5.6",
  "winapi",
  "windows",
@@ -2348,18 +2331,6 @@ dependencies = [
  "cfg-if 1.0.3",
  "libc",
  "memoffset 0.6.5",
-]
-
-[[package]]
-name = "nix"
-version = "0.30.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
-dependencies = [
- "bitflags 2.9.4",
- "cfg-if 1.0.3",
- "cfg_aliases",
- "libc",
 ]
 
 [[package]]
@@ -3471,9 +3442,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm"
-version = "2.0.0-rc.9"
+version = "2.0.0-rc.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5f6630c76b8485b923b13dfce133ce6f8158d9a1dcbc8443b6f5de4952962e5"
+checksum = "f5ce6e9641b5b03a1d55ae3b2ee33328d58e4637093a87741b6777e536ecf359"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3481,6 +3452,7 @@ dependencies = [
  "chrono",
  "derive_more",
  "futures-util",
+ "itertools",
  "log",
  "ouroboros",
  "pgvector",
@@ -3488,6 +3460,7 @@ dependencies = [
  "sea-orm-macros",
  "sea-query",
  "sea-query-sqlx",
+ "sea-schema",
  "serde",
  "serde_json",
  "sqlx",
@@ -3520,9 +3493,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-macros"
-version = "2.0.0-rc.9"
+version = "2.0.0-rc.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bbde8c00319d452714377c1842b4ee3ec7d2eb2b3bd022f7515f6637598c135"
+checksum = "09080671878a0bbe73732aaefe225e1cbad685a2583c839cc03943deecb28f8b"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -5040,12 +5013,9 @@ dependencies = [
 name = "webcom_ical"
 version = "0.3.0"
 dependencies = [
- "arc-swap",
  "async-recursion",
  "base64 0.22.1",
  "chrono",
- "clap",
- "ctrlc",
  "dotenvy",
  "entity",
  "icalendar",

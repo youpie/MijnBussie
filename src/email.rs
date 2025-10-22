@@ -56,6 +56,7 @@ pub struct EnvMailVariables {
     send_welcome_mail: bool,
     send_failed_signin_mail: bool,
     send_error_mail: bool,
+    send_removed_shift: bool,
 }
 
 /*
@@ -77,6 +78,7 @@ impl EnvMailVariables {
         let send_mail_updated_shift = user.user_properties.send_mail_updated_shift;
         let send_error_mail = user.user_properties.send_error_mail;
         let send_welcome_mail = user.user_properties.send_welcome_mail;
+        let send_removed_shift = user.user_properties.send_mail_removed_shift;
         let send_failed_signin_mail = user.user_properties.send_failed_signin_mail;
         Self {
             smtp_server,
@@ -90,6 +92,7 @@ impl EnvMailVariables {
             send_error_mail,
             send_welcome_mail,
             send_failed_signin_mail,
+            send_removed_shift,
         }
     }
     pub fn new_kuma() -> Self {
@@ -106,6 +109,7 @@ impl EnvMailVariables {
         let send_error_mail = user.user_properties.send_error_mail;
         let send_welcome_mail = user.user_properties.send_welcome_mail;
         let send_failed_signin_mail = user.user_properties.send_failed_signin_mail;
+        let send_removed_shift = user.user_properties.send_mail_removed_shift;
         Self {
             smtp_server,
             smtp_username,
@@ -118,6 +122,7 @@ impl EnvMailVariables {
             send_error_mail,
             send_welcome_mail,
             send_failed_signin_mail,
+            send_removed_shift,
         }
     }
 }
@@ -249,7 +254,7 @@ fn find_send_shift_mails(
         );
         create_send_new_email(mailer, updated_shifts, env, true)?;
     }
-    if !removed_shifts.is_empty() && env.send_mail_updated_shift {
+    if !removed_shifts.is_empty() && env.send_removed_shift {
         info!("Removing {} shifts", removed_shifts.len());
         removed_shifts.retain(|shift| shift.date >= current_date);
         if !removed_shifts.is_empty() {

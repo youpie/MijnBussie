@@ -22,7 +22,11 @@ time = { version = "0.3.41", features = [
 migration = { path = "migration" }
 kuma-client = "1.0.0"
 url = "2.5.7"
-icalendar = {version = "0.17.3", features = ["serde_json", "serde", "default"]} 
+icalendar = { version = "0.17.3", features = [
+    "serde_json",
+    "serde",
+    "default",
+] }
 chrono = "0.4.41"
 serde_json = "1.0.143"
 async-recursion = "1.1.1"
@@ -32,11 +36,11 @@ strfmt = "0.2.5"
 pretty_env_logger = "0.5.0"
 log = "0.4.27"
 rand = "0.9.2"
-clap = { version = "4.5.46", features = ["derive"] }
-ctrlc = "3.4.7"
 ipipe = "0.11.7"
 serde_with = "3.14.0"
-sea-orm = { version = "2.0.0-rc.9", features = ["runtime-tokio", "sqlx-postgres"] }
-arc-swap = "1.7.1"
+sea-orm = { version = "2.0.0-rc.13", features = [
+    "runtime-tokio",
+    "sqlx-postgres",
+] }
 simplestcrypt = "0.2.0"
 base64 = "0.22.1"
