@@ -6,6 +6,7 @@ use std::{
 };
 
 use sea_orm::DatabaseConnection;
+use serde::Serialize;
 use time::Time;
 use tokio::{
     sync::{
@@ -19,7 +20,7 @@ use tokio::{
 use crate::{
     GENERAL_PROPERTIES, GenResult, USER_PROPERTIES,
     execution::{StartRequest, calculate_next_execution_time, get_system_time},
-    main_loop,
+    user_instance,
     variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
 };
 use crate::errors::FailureType;
@@ -32,18 +33,20 @@ enum InstanceState {
     Remove,
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct RequestResponse {
-    pub logbook: Option<ApplicationLogbook>,
-    pub name: Option<String>,
-    pub started: Option<bool>,
+#[derive(Debug, Clone, Serialize)]
+pub enum RequestResponse {
+    Logbook(ApplicationLogbook),
+    Name(String),
+    Active(bool),
+    ExitCode(FailureType),
+    UserData(UserData)
 }
 
 pub struct UserInstance {
     pub user_instance_data: UserInstanceData,
     pub thread_handle: JoinHandle<()>,
     pub request_sender: Sender<StartRequest>,
-    pub response_reciever: RwLock<Receiver<RequestResponse>>,
+    pub response_receiver: RwLock<Receiver<RequestResponse>>,
     pub execution_time: Time,
 }
 
@@ -54,7 +57,7 @@ impl UserInstance {
         let data_clone = user_data.clone();
         let thread = tokio::spawn(USER_PROPERTIES.scope(
             RefCell::new(None),
-            GENERAL_PROPERTIES.scope(RefCell::new(None), main_loop(request_channel.1, response_channel.0, data_clone)),
+            GENERAL_PROPERTIES.scope(RefCell::new(None), user_instance(request_channel.1, response_channel.0, data_clone)),
         ));
         let execution_time = calculate_next_execution_time(user_data.user_data.clone(), true).await;
         info!(
@@ -68,7 +71,7 @@ impl UserInstance {
             user_instance_data: user_data,
             thread_handle: thread,
             request_sender: request_channel.0,
-            response_reciever: RwLock::new(response_channel.1),
+            response_receiver: RwLock::new(response_channel.1),
             execution_time,
         }
     }
@@ -86,14 +89,19 @@ static DEFAULT_PROPERTIES: RwCell<ThreadShare<GeneralProperties>> =
 pub async fn watchdog(
     instances: Arc<RwLock<InstanceMap>>,
     db: &DatabaseConnection,
-    receiver: &mut Receiver<()>,
+    receiver: &mut Receiver<String>,
 ) -> GenResult<()> {
     loop {
-        let _wait = timeout(Duration::from_secs(60 * 5), receiver.recv()).await;
-        info!("Updating users");
-        let users = UserData::get_all_usernames(db).await?;
-        start_stop_instances(db, instances.clone(), &users).await?;
-        info!("Users: {users:#?}");
+        if let Ok(Some(user)) = timeout(Duration::from_secs(60 * 5), receiver.recv()).await && !user.is_empty() {
+            info!("Updating user {user}");
+            refresh_instances(db, &vec![user], &mut *instances.write().await).await?;
+        } else {
+            info!("Updating users");
+            let users = UserData::get_all_usernames(db).await?;
+            start_stop_instances(db, instances.clone(), &users).await?;
+            info!("Users: {users:#?}");
+        }
+
     }
 }
 
@@ -102,7 +110,9 @@ async fn start_stop_instances(
     active_instances: Arc<RwLock<InstanceMap>>,
     db_users: &Vec<String>,
 ) -> GenResult<()> {
+    info!("A");
     let mut active_instances = active_instances.write().await;
+    info!("B");
     let mut instances_state: HashMap<InstanceName, InstanceState> = HashMap::new();
     for active_instance in &mut *active_instances {
         instances_state.insert(active_instance.0.to_owned(), InstanceState::Remove);
@@ -116,7 +126,7 @@ async fn start_stop_instances(
             }
         };
     }
-
+    info!("C");
     // Load the default preferences and write them to the global variable
     if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
         *default_properties.write().await = GeneralProperties::load_default_preferences(db).await?;
@@ -133,10 +143,13 @@ async fn start_stop_instances(
         get_equal_instances(InstanceState::Remain, &instances_state, &active_instances);
     let instances_to_add =
         get_equal_instances(InstanceState::New, &instances_state, &active_instances);
-
+    info!("D");
     add_instances(db, &instances_to_add, &mut active_instances).await?;
+    info!("Add");
     stop_instances(&instances_to_remove, &mut active_instances);
+    info!("Stop");
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await?;
+    info!("E");
     Ok(())
 }
 
@@ -155,7 +168,7 @@ async fn refresh_instances(
     active_instances: &mut InstanceMap,
 ) -> GenResult<()> {
     for insance_name in instances_to_refresh {
-        if let Some(instance) = active_instances.get(insance_name) {
+        if let Some(instance) = active_instances.get_mut(insance_name) {
             instance.user_instance_data.update_user(db).await?;
         }
     }

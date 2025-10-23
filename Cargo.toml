@@ -46,3 +46,5 @@ simplestcrypt = "0.2.0"
 base64 = "0.22.1"
 axum = { version = "0.8.6", features = ["json"] }
 default = "0.1.2"
+strum = "0.27"
+strum_macros = "0.27"

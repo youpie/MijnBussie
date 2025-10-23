@@ -10,6 +10,7 @@ use entity::{
 use sea_orm::RelationTrait;
 use sea_orm::{ColumnTrait, QuerySelect};
 use sea_orm::{DatabaseConnection, DerivePartialModel, EntityTrait, QueryFilter};
+use serde::Serialize;
 use tokio::sync::RwLock;
 
 use crate::GenResult;
@@ -48,8 +49,8 @@ impl UserInstanceData {
     }
 
     pub async fn update_user(&self, db: &DatabaseConnection) -> GenResult<()> {
-        let username = &self.user_data.read().await.user_name;
-        let userdata = UserData::get_from_username(db, username).await?;
+        let username = self.user_data.read().await.user_name.clone();
+        let userdata = UserData::get_from_username(db, &username).await?;
         if let Some(user_data) = userdata {
             *self.user_data.write().await = user_data.clone();
             let custom_properties_id = user_data.custom_general_properties.clone();
@@ -137,7 +138,7 @@ pub struct KumaProperties {
 }
 
 #[allow(dead_code)]
-#[derive(DerivePartialModel, Debug, Clone)]
+#[derive(DerivePartialModel, Debug, Clone, Serialize)]
 #[sea_orm(entity = "user_data::Entity")]
 pub struct UserData {
     pub user_name: String,

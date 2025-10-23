@@ -16,15 +16,14 @@ use email::send_welcome_mail;
 use sea_orm::Database;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fs;
-use std::fs::write;
+use tokio::fs;
+use tokio::fs::write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use default::default;
-use reqwest::Response;
 use thirtyfour::prelude::*;
 use time::macros::format_description;
+use tokio::runtime::Handle;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::mpsc::channel;
@@ -202,7 +201,8 @@ fn set_get_name(set_new_name: Option<String>) -> String {
     if let Some(new_name) = set_new_name
         && new_name != name
     {
-        write(&path, &new_name).error("Opslaan van naam");
+        let new_name_clone = new_name.clone();
+        tokio::task::block_in_place(move || {Handle::current().block_on(write(&path, &new_name_clone))}).error("Opslaan van naam");
         name = new_name;
     }
     if let Ok(mut const_name) = NAME.write() {
@@ -244,11 +244,11 @@ async fn main_program(
         info!(
             "Existing calendar file not found, adding two extra months of shifts and removing partial calendars"
         );
-        _ = || -> GenResult<()> {
-            fs::remove_file(PathBuf::from(NON_RELEVANT_EVENTS_PATH))?;
-            fs::remove_file(PathBuf::from(RELEVANT_EVENTS_PATH))?;
+        _ = async || -> GenResult<()> {
+            fs::remove_file(PathBuf::from(NON_RELEVANT_EVENTS_PATH)).await?;
+            fs::remove_file(PathBuf::from(RELEVANT_EVENTS_PATH)).await?;
             Ok(())
-        }();
+        }().await;
         let found_shifts = load_previous_month_shifts(&driver, 2).await?;
         debug!("Found a total of {} shifts", found_shifts.len());
         let mut found_shifts_split = split_relevant_shifts(found_shifts);
@@ -297,7 +297,7 @@ async fn main_program(
     let calendar = create_ical(&night_split_shifts, &all_shifts, &logbook.state);
     send_welcome_mail(&ical_path, false)?;
     info!("Writing to: {:?}", &ical_path);
-    write(ical_path, calendar?.as_bytes())?;
+    write(ical_path, calendar?.as_bytes()).await?;
     logbook.generate_shift_statistics(&all_shifts, non_relevant_shift_len);
     Ok(())
 }
@@ -312,25 +312,25 @@ async fn initiate_webdriver() -> GenResult<WebDriver> {
 // Create file on disk to show webcom ical is currently active
 // Always delete the file at the beginning of this function
 // Only create a new file if start reason is Some
-fn create_delete_lock(start_reason: Option<&StartRequest>) -> GenResult<()> {
+async fn create_delete_lock(start_reason: Option<&StartRequest>) -> GenResult<()> {
     let path = create_path("active");
     if path.exists() {
         debug!("Removing existing lock file");
-        fs::remove_file(&path)?;
+        fs::remove_file(&path).await?;
     }
     if let Some(start_reason) = start_reason {
         debug!("Creating new lock file");
         let text = serde_json::to_string(start_reason).unwrap_or_default();
-        write(&path, text.as_bytes())?;
+        write(&path, text.as_bytes()).await?;
     }
     Ok(())
 }
 
-async fn webcom_execution_logic(start_reason: StartRequest) -> FailureType {
+async fn webcom_instance(start_reason: StartRequest) -> FailureType {
 
     let (_user, properties) = get_data();
 
-    create_delete_lock(Some(&start_reason)).warn("Creating Lock file");
+    create_delete_lock(Some(&start_reason)).await.warn("Creating Lock file");
 
     let name = set_get_name(None);
     let mut logbook = ApplicationLogbook::load();
@@ -436,43 +436,63 @@ async fn webcom_execution_logic(start_reason: StartRequest) -> FailureType {
             .warn("Updating calendar exit code");
     }
 
-    create_delete_lock(None).warn("Removing Lock file");
+    create_delete_lock(None).await.warn("Removing Lock file");
     current_exit_code
+}
+
+/// If Webcom is running
+/// Return false
+/// if it is not
+/// get the exit code of the previous join handle and set it
+/// spawn a new webcom instance
+async fn spawn_webcom_instance(start_request: StartRequest, thread_store: &mut Option<JoinHandle<FailureType>>, last_exit_code: &mut FailureType) -> bool {
+    if let Some(thread) = thread_store && !thread.is_finished() {
+        return false;
+    } else if let Some(thread) = thread_store {
+        *last_exit_code = thread.await.unwrap_or_default();
+    }
+    let (user, properties) = get_data();
+    *thread_store = Some(tokio::spawn(USER_PROPERTIES.scope(
+        RefCell::new(Some(user)),
+        GENERAL_PROPERTIES.scope(RefCell::new(Some(properties)), webcom_instance(start_request)),
+    )));
+    true
+}
+
+fn is_webcom_instance_active (thread_store: &Option<JoinHandle<FailureType>>) -> bool {
+    thread_store.as_ref().is_some_and(|thread| !thread.is_finished())
 }
 
 /*
 This starts the WebDriver session
 Loads the main logic, and retries if it fails
 */
-async fn main_loop(receiver: Receiver<StartRequest>, sender: Sender<RequestResponse>, instance: UserInstanceData) {
-    let mut receiver_borrow = receiver;
+async fn user_instance(receiver: Receiver<StartRequest>, sender: Sender<RequestResponse>, instance: UserInstanceData) {
+    let mut receiver = receiver;
     let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
+    let mut last_exit_code = FailureType::default();
     loop {
         debug!("Waiting for notification");
-        let start_request = receiver_borrow
+        let start_request = receiver
             .recv()
             .await
             .expect("Notification channel closed");
 
-        let (user, properties) = set_data(&instance).await;
+        let (user, _properties) = set_data(&instance).await;
+
         let response = match start_request {
-            StartRequest::Logbook => RequestResponse {logbook: Some(ApplicationLogbook::load()), ..default()},
-            StartRequest::Name => RequestResponse{name: Some(set_get_name(None)), ..default()},
-            _ => {
-                if webcom_thread.as_ref().is_some_and(|thread| !thread.is_finished()) {
-                    RequestResponse{started: Some(false), ..default()}
-                } else {
-                    webcom_thread = Some(tokio::spawn(USER_PROPERTIES.scope(
-                        RefCell::new(Some(user)),
-                        GENERAL_PROPERTIES.scope(RefCell::new(Some(properties)), webcom_execution_logic(start_request)),
-                    )));
-                    RequestResponse{started: Some(true), ..default()}
-                }
-
-            }
+            StartRequest::Logbook => Some(RequestResponse::Logbook(ApplicationLogbook::load())),
+            StartRequest::Name => Some(RequestResponse::Name(set_get_name(None))),
+            StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(&webcom_thread))),
+            StartRequest::Api => Some(RequestResponse::Active(spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await)),
+            StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
+            StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
+            _ => {spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await; None}
         };
+        if let Some(response) = response {
+            sender.try_send(response).info("Send response");
+        }
 
-        sender.try_send(response).info("Send response");
 
         if start_request == StartRequest::Single {
             break;
@@ -508,35 +528,14 @@ async fn main() -> GenResult<()> {
     let db = Database::connect(&var("DATABASE_URL")?)
         .await
         .expect("Could not connect to database");
-    // let user = UserInstanceData::load_user(&db, "25348", None)
-    //     .await?
-    //     .expect("No user found");
+
     let (watchdog_tx, mut watchdog_rx) = channel(1);
-    _ = watchdog_tx.try_send(());
+    _ = watchdog_tx.try_send("".to_owned());
     let instances: Arc<RwLock<InstanceMap>> = Arc::new(RwLock::new(HashMap::new()));
     tokio::spawn(execution_timer(instances.clone()));
-    tokio::spawn(api(instances.clone()));
+    tokio::spawn(api(instances.clone(), watchdog_tx));
     watchdog(instances.clone(), &db, &mut watchdog_rx).await?;
 
-    // let (tx, mut rx) = channel(1);
-    // let tx_clone = tx.clone();
-    // let instant_run = args.instant_run;
-    // // If the single run argument is set, just send a single message so the main loop instantly runs.
-    // // Otherwise start the execution manager
-    // match args.single_run {
-    //     false => {
-    //         spawn(async move { execution_manager(tx, instant_run).await });
-    //     }
-    //     true => {
-    //         tx.send(StartReason::Single).await?;
-    //     }
-    // };
-    // let main_program = spawn(async move { main_loop(rx, user).await });
-    // if !args.single_run {
-    //     start_pipe(tx_clone).await.warn("Start pipe");
-    // } else {
-    //     main_program.await.info("Main program");
-    // }
     info!("Stopping webcom ical");
     Ok(())
 }

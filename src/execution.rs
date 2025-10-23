@@ -9,13 +9,15 @@ use crate::{GenResult, email::TIME_DESCRIPTION, variables::UserData, watchdog::I
 #[allow(dead_code)]
 #[derive(PartialEq, Serialize, Copy, Clone)]
 pub enum StartRequest {
-    Direct,
     Timer,
+    Api,
     Single,
-    Pipe,
     Force,
     Logbook,
     Name,
+    IsActive,
+    ExitCode,
+    UserData
 }
 
 pub fn get_system_time() -> Time {
@@ -78,6 +80,7 @@ pub async fn execution_timer(instances: Arc<RwLock<InstanceMap>>) -> GenResult<(
                     false,
                 )
                 .await;
+                debug!("Executing user {user_name} at {} next", instance.1.execution_time)
             }
         }
     }

@@ -1,68 +1,90 @@
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::{Json, Router};
-use axum::routing::{get, Route};
-use tokio::sync::mpsc::Receiver;
+use axum::routing::{get};
+use strum_macros::EnumString;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
+use crate::errors::OptionResult;
 use crate::execution::StartRequest;
-use crate::health::ApplicationLogbook;
-use crate::variables::UserInstanceData;
-use crate::watchdog::InstanceMap;
+use crate::GenResult;
+use crate::watchdog::{InstanceMap, RequestResponse};
 
 #[derive(Clone)]
 pub struct ServerConfig {
     map: Arc<RwLock<InstanceMap>>,
+    sender: Sender<String>,
 }
 
-pub async fn api(instance_map: Arc<RwLock<InstanceMap>>) {
+#[derive(Clone, EnumString, Debug, PartialEq)]
+enum Action {
+    #[strum(ascii_case_insensitive)]
+    Logbook,
+    #[strum(ascii_case_insensitive)]
+    IsActive,
+    #[strum(ascii_case_insensitive)]
+    Name,
+    #[strum(ascii_case_insensitive)]
+    Start,
+    #[strum(ascii_case_insensitive)]
+    ExitCode,
+    #[strum(ascii_case_insensitive)]
+    UserData,
+}
+
+pub async fn api(instance_map: Arc<RwLock<InstanceMap>>, watchdog_sender: Sender<String>) {
     let config = ServerConfig {
-        map: instance_map.clone()
+        map: instance_map,
+        sender: watchdog_sender
     };
     let app = Router::new()
-        .route("/logbook/{user_name}", get(return_logbook))
-        .route("/start/{user_name}", get(start_instance))
-        .route("/name/{user_name}", get(get_name))
+        .route("/api/{user_name}/{action}", get(get_information))
+        .route("/api/refresh/{user_name}", get(refresh_users))
         .with_state(config);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn return_logbook(State(data): State<ServerConfig>, Path(user_name): Path<String>) -> impl IntoResponse {
+async fn refresh_users(State(data): State<ServerConfig>, user_name: Option<Path<String>>) -> impl IntoResponse {
+    let send = data.sender.try_send(user_name.and_then(|path| Some(path.to_string())).unwrap_or_default()).map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR,err.to_string()));
+    send.into_response()
+}
+
+async fn get_information(State(data): State<ServerConfig>, Path((user_name, action)): Path<(String, String)>) -> impl IntoResponse {
     info!("Got a request for {user_name}");
+
     match data.map.read().await.get(&user_name) {
         Some(instance) => {
-            instance.request_sender.try_send(StartRequest::Logbook);
-            let response = timeout(Duration::from_secs(2), instance.response_reciever.write().await.recv()).await;
-            (StatusCode::OK, Json(response.unwrap().unwrap().logbook.unwrap())).into_response()
+            match send_request(action, &instance.request_sender, &mut *instance.response_receiver.write().await).await {
+                Ok(response) => {
+                    (StatusCode::OK, Json(response)).into_response()
+                }
+                Err(err) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())).into_response()
+                }
+            }
         },
-        None => (StatusCode::IM_A_TEAPOT, "User not found".to_string()).into_response(),
+        None => (StatusCode::NOT_FOUND, "User not found".to_string()).into_response(),
     }
 }
 
-async fn start_instance(State(data): State<ServerConfig>, Path(user_name): Path<String>) -> impl IntoResponse {
-    info!("Got a request for {user_name}");
-    match data.map.read().await.get(&user_name) {
-        Some(instance) => {
-            instance.request_sender.try_send(StartRequest::Pipe);
-            let response = timeout(Duration::from_secs(2), instance.response_reciever.write().await.recv()).await;
-            (StatusCode::OK, Json(response.unwrap().unwrap().started.unwrap())).into_response()
-        },
-        None => (StatusCode::IM_A_TEAPOT, "User not found".to_string()).into_response(),
-    }
-}
+async fn send_request(request_type: String, request_sender: &Sender<StartRequest>, response_receiver: &mut Receiver<RequestResponse>) -> GenResult<RequestResponse> {
+    let action: Action = Action::from_str(&request_type)?;
+    let start_request = match action {
+        Action::Logbook => StartRequest::Logbook,
+        Action::IsActive => StartRequest::IsActive,
+        Action::Name => StartRequest::Name,
+        Action::Start => StartRequest::Api,
+        Action::ExitCode => StartRequest::ExitCode,
+        Action::UserData => StartRequest::UserData,
+    };
+    request_sender.try_send(start_request)?;
+    let response = timeout(Duration::from_secs(2), response_receiver.recv()).await?.result_reason("No response")?;
 
-async fn get_name(State(data): State<ServerConfig>, Path(user_name): Path<String>) -> impl IntoResponse {
-    info!("Got a request for {user_name}");
-    match data.map.read().await.get(&user_name) {
-        Some(instance) => {
-            instance.request_sender.try_send(StartRequest::Name);
-            let response = timeout(Duration::from_secs(2), instance.response_reciever.write().await.recv()).await;
-            (StatusCode::OK, Json(response.unwrap().unwrap().name.unwrap())).into_response()
-        },
-        None => (StatusCode::IM_A_TEAPOT, "User not found".to_string()).into_response(),
-    }
+    Ok(response)
 }

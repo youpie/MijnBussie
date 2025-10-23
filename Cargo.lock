@@ -5112,6 +5112,8 @@ dependencies = [
  "serde_with",
  "simplestcrypt",
  "strfmt",
+ "strum",
+ "strum_macros",
  "thirtyfour",
  "thiserror 2.0.16",
  "time",

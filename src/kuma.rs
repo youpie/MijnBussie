@@ -2,9 +2,9 @@ use kuma_client::monitor::{MonitorGroup, MonitorType};
 use kuma_client::{Client, monitor, notification};
 use std::collections::HashMap;
 use std::fs::read_to_string;
-use std::thread;
 use std::time::Duration;
 use strfmt::strfmt;
+use tokio::time::sleep;
 use url::Url;
 
 use crate::errors::OptionResult;
@@ -20,7 +20,7 @@ pub async fn first_run() -> GenResult<()> {
     let username = kuma_properties.username;
     let password = kuma_properties.password;
     let kuma_client = connect_to_kuma(&url, username, password).await?;
-    thread::sleep(Duration::from_millis(100));
+    sleep(Duration::from_millis(100)).await;
     let notification_id = create_notification(&kuma_client, &user.user_name, &url).await?;
     if let Some(monitor_id) =
         get_monitor_type_id(&kuma_client, &user.user_name, MonitorType::Push, false).await?
