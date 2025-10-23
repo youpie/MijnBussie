@@ -21,17 +21,21 @@ use std::fs::write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use default::default;
+use reqwest::Response;
 use thirtyfour::prelude::*;
 use time::macros::format_description;
 use tokio::sync::RwLock;
-use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::channel;
+use tokio::task::JoinHandle;
 use tokio::task_local;
-
+use crate::api::api;
 use crate::errors::FailureType;
 use crate::errors::IncorrectCredentialsCount;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
-use crate::execution::StartReason;
+use crate::execution::StartRequest;
 use crate::execution::execution_timer;
 use crate::health::ApplicationLogbook;
 use crate::health::send_heartbeat;
@@ -42,7 +46,7 @@ use crate::shift::*;
 use crate::variables::GeneralProperties;
 use crate::variables::UserData;
 use crate::variables::UserInstanceData;
-use crate::watchdog::InstanceMap;
+use crate::watchdog::{InstanceMap, RequestResponse};
 use crate::watchdog::watchdog;
 
 pub mod email;
@@ -56,6 +60,7 @@ mod parsing;
 pub mod shift;
 mod variables;
 mod watchdog;
+mod api;
 
 type GenResult<T> = Result<T, GenError>;
 type GenError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -71,16 +76,9 @@ task_local! {
 
 // Get thread specific data
 pub fn get_data() -> (Arc<UserData>, Arc<GeneralProperties>) {
-    let user = USER_PROPERTIES
-        .get()
-        .borrow()
-        .clone()
-        .expect("Failed to get UserData");
-    let properties = GENERAL_PROPERTIES
-        .get()
-        .borrow()
-        .clone()
-        .expect("Failed to get SystemData");
+    let user = USER_PROPERTIES.with(|data| data.borrow().clone().expect("Failed to get UserData"));
+    let properties =
+        GENERAL_PROPERTIES.with(|data| data.borrow().clone().expect("Failed to get Properties"));
     (user, properties)
 }
 
@@ -88,8 +86,8 @@ pub fn get_data() -> (Arc<UserData>, Arc<GeneralProperties>) {
 async fn set_data(instance: &UserInstanceData) -> (Arc<UserData>, Arc<GeneralProperties>) {
     let user_data = Arc::new(instance.user_data.read().await.clone());
     let settings_data = Arc::new(instance.general_settings.read().await.clone());
-    *USER_PROPERTIES.get().borrow_mut() = Some(user_data.clone());
-    *GENERAL_PROPERTIES.get().borrow_mut() = Some(settings_data.clone());
+    USER_PROPERTIES.with(|data| *data.borrow_mut() = Some(user_data.clone()));
+    GENERAL_PROPERTIES.with(|data| *data.borrow_mut() = Some(settings_data.clone()));
     (user_data, settings_data)
 }
 
@@ -314,7 +312,7 @@ async fn initiate_webdriver() -> GenResult<WebDriver> {
 // Create file on disk to show webcom ical is currently active
 // Always delete the file at the beginning of this function
 // Only create a new file if start reason is Some
-fn create_delete_lock(start_reason: Option<&StartReason>) -> GenResult<()> {
+fn create_delete_lock(start_reason: Option<&StartRequest>) -> GenResult<()> {
     let path = create_path("active");
     if path.exists() {
         debug!("Removing existing lock file");
@@ -328,130 +326,155 @@ fn create_delete_lock(start_reason: Option<&StartReason>) -> GenResult<()> {
     Ok(())
 }
 
+async fn webcom_execution_logic(start_reason: StartRequest) -> FailureType {
+
+    let (_user, properties) = get_data();
+
+    create_delete_lock(Some(&start_reason)).warn("Creating Lock file");
+
+    let name = set_get_name(None);
+    let mut logbook = ApplicationLogbook::load();
+    let mut failure_counter = IncorrectCredentialsCount::load();
+
+    let driver = match get_driver(&mut logbook).await {
+        Ok(driver) => driver,
+        Err(err) => {
+            error!("Failed to get driver! error: {}", err.to_string());
+            logbook
+                .save(&FailureType::GeckoEngine)
+                .warn("Saving gecko driver error");
+            return FailureType::GeckoEngine;
+        }
+    };
+
+    let mut current_exit_code = FailureType::default();
+    let previous_exit_code = logbook.clone().state;
+    let mut running_errors: Vec<GenError> = vec![];
+
+    let mut retry_count: usize = 0;
+    let max_retry_count: usize = properties.execution_retry_count as usize;
+
+    // Check if the program is allowed to run, or not due to failed sign-in
+    let sign_in_check: Option<SignInFailure> =
+        failure_counter.sign_in_failed_check().unwrap_or(None);
+    if start_reason != StartRequest::Force {
+        if let Some(failure) = sign_in_check {
+            retry_count = max_retry_count;
+            current_exit_code = FailureType::SignInFailed(failure);
+        }
+    } else {
+        info!("Force resuming execution");
+    }
+
+    while retry_count < max_retry_count {
+        match main_program(&driver, retry_count, &mut logbook)
+            .await
+            .warn_owned("Main Program")
+        {
+            Ok(()) => {
+                failure_counter
+                    .update_signin_failure(false, None)
+                    .warn("Updating signin failure");
+                retry_count = max_retry_count;
+            }
+            Err(err) if err.downcast_ref::<FailureType>().is_some() => {
+                let webcom_error = err
+                    .downcast_ref::<FailureType>()
+                    .cloned()
+                    .unwrap_or_default();
+                match webcom_error.clone() {
+                    FailureType::SignInFailed(signin_failure) => {
+                        retry_count = max_retry_count;
+                        failure_counter
+                            .update_signin_failure(true, Some(signin_failure.clone()))
+                            .warn("Updating signin failure 2");
+                        current_exit_code = webcom_error;
+                    }
+                    FailureType::ConnectError => {
+                        retry_count = max_retry_count;
+                        current_exit_code = FailureType::ConnectError;
+                    }
+                    _ => {
+                        running_errors.push(err);
+                    }
+                }
+            }
+            Err(err) => {
+                running_errors.push(err);
+            }
+        };
+        retry_count += 1;
+    }
+    if running_errors.is_empty() {
+        info!("Alles is in een keer goed gegaan, jippie!");
+    } else if running_errors.len() < max_retry_count {
+        warn!("Errors have occured, but succeded in the end");
+    } else {
+        current_exit_code = FailureType::TriesExceeded;
+        send_errors(&running_errors, &name).warn("Sending errors in loop");
+    }
+
+    _ = driver.quit().await.is_err_and(|_| {
+        current_exit_code = FailureType::GeckoEngine;
+        true
+    });
+
+    if current_exit_code != FailureType::TriesExceeded {
+        send_heartbeat(&current_exit_code)
+            .await
+            .warn("Sending Heartbeat in loop");
+    }
+
+    logbook
+        .save(&current_exit_code)
+        .warn("Saving logbook in loop");
+
+    // Update the exit code in the calendar if it is not equal to the previous value
+    if previous_exit_code != current_exit_code {
+        warn!("Previous exit code was different than current, need to update");
+        update_calendar_exit_code(&previous_exit_code, &current_exit_code)
+            .warn("Updating calendar exit code");
+    }
+
+    create_delete_lock(None).warn("Removing Lock file");
+    current_exit_code
+}
+
 /*
 This starts the WebDriver session
 Loads the main logic, and retries if it fails
 */
-async fn main_loop(receiver: Receiver<StartReason>, instance: UserInstanceData) {
-    let mut reciever_borrow = receiver;
+async fn main_loop(receiver: Receiver<StartRequest>, sender: Sender<RequestResponse>, instance: UserInstanceData) {
+    let mut receiver_borrow = receiver;
+    let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
     loop {
         debug!("Waiting for notification");
-        let continue_execution = reciever_borrow
+        let start_request = receiver_borrow
             .recv()
             .await
             .expect("Notification channel closed");
 
-        let (_user, properties) = set_data(&instance).await;
+        let (user, properties) = set_data(&instance).await;
+        let response = match start_request {
+            StartRequest::Logbook => RequestResponse {logbook: Some(ApplicationLogbook::load()), ..default()},
+            StartRequest::Name => RequestResponse{name: Some(set_get_name(None)), ..default()},
+            _ => {
+                if webcom_thread.as_ref().is_some_and(|thread| !thread.is_finished()) {
+                    RequestResponse{started: Some(false), ..default()}
+                } else {
+                    webcom_thread = Some(tokio::spawn(USER_PROPERTIES.scope(
+                        RefCell::new(Some(user)),
+                        GENERAL_PROPERTIES.scope(RefCell::new(Some(properties)), webcom_execution_logic(start_request)),
+                    )));
+                    RequestResponse{started: Some(true), ..default()}
+                }
 
-        create_delete_lock(Some(&continue_execution)).warn("Creating Lock file");
-
-        let name = set_get_name(None);
-        let mut logbook = ApplicationLogbook::load();
-        let mut failure_counter = IncorrectCredentialsCount::load();
-
-        let driver = match get_driver(&mut logbook).await {
-            Ok(driver) => driver,
-            Err(err) => {
-                error!("Failed to get driver! error: {}", err.to_string());
-                logbook
-                    .save(&FailureType::GeckoEngine)
-                    .warn("Saving gecko driver error");
-                return ();
             }
         };
 
-        let mut current_exit_code = FailureType::default();
-        let previous_exit_code = logbook.clone().state;
-        let mut running_errors: Vec<GenError> = vec![];
+        sender.try_send(response).info("Send response");
 
-        let mut retry_count: usize = 0;
-        let max_retry_count: usize = properties.execution_retry_count as usize;
-
-        // Check if the program is allowed to run, or not due to failed sign-in
-        let sign_in_check: Option<SignInFailure> =
-            failure_counter.sign_in_failed_check().unwrap_or(None);
-        if continue_execution != StartReason::Force {
-            if let Some(failure) = sign_in_check {
-                retry_count = max_retry_count;
-                current_exit_code = FailureType::SignInFailed(failure);
-            }
-        } else {
-            info!("Force resuming execution");
-        }
-
-        while retry_count < max_retry_count {
-            match main_program(&driver, retry_count, &mut logbook)
-                .await
-                .warn_owned("Main Program")
-            {
-                Ok(()) => {
-                    failure_counter
-                        .update_signin_failure(false, None)
-                        .warn("Updating signin failure");
-                    retry_count = max_retry_count;
-                }
-                Err(err) if err.downcast_ref::<FailureType>().is_some() => {
-                    let webcom_error = err
-                        .downcast_ref::<FailureType>()
-                        .cloned()
-                        .unwrap_or_default();
-                    match webcom_error.clone() {
-                        FailureType::SignInFailed(signin_failure) => {
-                            retry_count = max_retry_count;
-                            failure_counter
-                                .update_signin_failure(true, Some(signin_failure.clone()))
-                                .warn("Updating signin failure 2");
-                            current_exit_code = webcom_error;
-                        }
-                        FailureType::ConnectError => {
-                            retry_count = max_retry_count;
-                            current_exit_code = FailureType::ConnectError;
-                        }
-                        _ => {
-                            running_errors.push(err);
-                        }
-                    }
-                }
-                Err(err) => {
-                    running_errors.push(err);
-                }
-            };
-            retry_count += 1;
-        }
-        if running_errors.is_empty() {
-            info!("Alles is in een keer goed gegaan, jippie!");
-        } else if running_errors.len() < max_retry_count {
-            warn!("Errors have occured, but succeded in the end");
-        } else {
-            current_exit_code = FailureType::TriesExceeded;
-            send_errors(&running_errors, &name).warn("Sending errors in loop");
-        }
-
-        _ = driver.quit().await.is_err_and(|_| {
-            current_exit_code = FailureType::GeckoEngine;
-            true
-        });
-
-        if current_exit_code != FailureType::TriesExceeded {
-            send_heartbeat(&current_exit_code)
-                .await
-                .warn("Sending Heartbeat in loop");
-        }
-
-        logbook
-            .save(&current_exit_code)
-            .warn("Saving logbook in loop");
-
-        // Update the exit code in the calendar if it is not equal to the previous value
-        if previous_exit_code != current_exit_code {
-            warn!("Previous exit code was different than current, need to update");
-            update_calendar_exit_code(&previous_exit_code, &current_exit_code)
-                .warn("Updating calendar exit code");
-        }
-
-        create_delete_lock(None).warn("Removing Lock file");
-
-        if continue_execution == StartReason::Single {
+        if start_request == StartRequest::Single {
             break;
         }
     }
@@ -488,9 +511,12 @@ async fn main() -> GenResult<()> {
     // let user = UserInstanceData::load_user(&db, "25348", None)
     //     .await?
     //     .expect("No user found");
+    let (watchdog_tx, mut watchdog_rx) = channel(1);
+    _ = watchdog_tx.try_send(());
     let instances: Arc<RwLock<InstanceMap>> = Arc::new(RwLock::new(HashMap::new()));
     tokio::spawn(execution_timer(instances.clone()));
-    watchdog(instances.clone(), &db).await?;
+    tokio::spawn(api(instances.clone()));
+    watchdog(instances.clone(), &db, &mut watchdog_rx).await?;
 
     // let (tx, mut rx) = channel(1);
     // let tx_clone = tx.clone();

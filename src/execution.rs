@@ -7,13 +7,15 @@ use tokio::{sync::RwLock, time::sleep};
 use crate::{GenResult, email::TIME_DESCRIPTION, variables::UserData, watchdog::InstanceMap};
 
 #[allow(dead_code)]
-#[derive(PartialEq, Serialize)]
-pub enum StartReason {
+#[derive(PartialEq, Serialize, Copy, Clone)]
+pub enum StartRequest {
     Direct,
     Timer,
     Single,
     Pipe,
     Force,
+    Logbook,
+    Name,
 }
 
 pub fn get_system_time() -> Time {
@@ -50,13 +52,19 @@ pub async fn calculate_next_execution_time(data: Arc<RwLock<UserData>>, first_ti
 }
 
 pub async fn execution_timer(instances: Arc<RwLock<InstanceMap>>) -> GenResult<()> {
+    let mut first = true;
     loop {
-        let sleep_time = 60 - get_system_time().second() as u64 + 1;
-        debug!("timer sleeping for {sleep_time} seconds");
-        sleep(std::time::Duration::from_secs(sleep_time)).await;
+        if !first {
+            let sleep_time = 60 - get_system_time().second() as u64 + 1;
+            debug!("timer sleeping for {sleep_time} seconds");
+            sleep(std::time::Duration::from_secs(sleep_time)).await;
+        } else {
+            first = false;
+        }
+
         let instances = &mut *instances.write().await;
         let current_system_time = get_system_time();
-        for instance in instances {
+        for instance in instances.iter_mut() {
             if instance.1.execution_time <= current_system_time {
                 let user_name = instance.0;
                 debug!(
@@ -64,7 +72,7 @@ pub async fn execution_timer(instances: Arc<RwLock<InstanceMap>>) -> GenResult<(
                     user_name,
                     current_system_time.format(TIME_DESCRIPTION).unwrap()
                 );
-                _ = instance.1.sender.try_send(StartReason::Timer);
+                _ = instance.1.request_sender.try_send(StartRequest::Timer);
                 instance.1.execution_time = calculate_next_execution_time(
                     instance.1.user_instance_data.user_data.clone(),
                     false,

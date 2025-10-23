@@ -46,6 +46,21 @@ impl UserInstanceData {
             Ok(None)
         }
     }
+
+    pub async fn update_user(&self, db: &DatabaseConnection) -> GenResult<()> {
+        let username = &self.user_data.read().await.user_name;
+        let userdata = UserData::get_from_username(db, username).await?;
+        if let Some(user_data) = userdata {
+            *self.user_data.write().await = user_data.clone();
+            let custom_properties_id = user_data.custom_general_properties.clone();
+            if let Some(custom_id) = custom_properties_id
+                && let Ok(Some(custom_properties)) = GeneralProperties::get(db, custom_id).await
+            {
+                *self.general_settings.write().await = custom_properties;
+            }
+        }
+        Ok(())
+    }
 }
 
 #[allow(dead_code)]
@@ -183,12 +198,6 @@ impl UserData {
     fn decrypt_password(&mut self) -> GenResult<()> {
         let secret_string = var("PASSWORD_SECRET")?;
         let secret = secret_string.as_bytes();
-        info!(
-            "{:?}",
-            BASE64_STANDARD_NO_PAD.encode(
-                simplestcrypt::encrypt_and_serialize(secret, self.password.as_bytes()).unwrap()
-            )
-        );
         self.password = String::from_utf8(
             simplestcrypt::deserialize_and_decrypt(
                 secret,

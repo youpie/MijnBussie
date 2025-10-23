@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     collections::HashMap,
     sync::{Arc, LazyLock},
+    time::Duration,
 };
 
 use sea_orm::DatabaseConnection;
@@ -9,17 +10,20 @@ use time::Time;
 use tokio::{
     sync::{
         RwLock,
-        mpsc::{Sender, channel},
+        mpsc::{Receiver, Sender, channel},
     },
     task::JoinHandle,
+    time::timeout,
 };
 
 use crate::{
     GENERAL_PROPERTIES, GenResult, USER_PROPERTIES,
-    execution::{StartReason, calculate_next_execution_time, get_system_time},
+    execution::{StartRequest, calculate_next_execution_time, get_system_time},
     main_loop,
     variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
 };
+use crate::errors::FailureType;
+use crate::health::ApplicationLogbook;
 
 #[derive(Debug, PartialEq)]
 enum InstanceState {
@@ -28,20 +32,29 @@ enum InstanceState {
     Remove,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct RequestResponse {
+    pub logbook: Option<ApplicationLogbook>,
+    pub name: Option<String>,
+    pub started: Option<bool>,
+}
+
 pub struct UserInstance {
     pub user_instance_data: UserInstanceData,
     pub thread_handle: JoinHandle<()>,
-    pub sender: Sender<StartReason>,
+    pub request_sender: Sender<StartRequest>,
+    pub response_reciever: RwLock<Receiver<RequestResponse>>,
     pub execution_time: Time,
 }
 
 impl UserInstance {
     pub async fn new(user_data: UserInstanceData) -> Self {
-        let channel = channel(1);
+        let request_channel = channel(1);
+        let response_channel = channel(1);
         let data_clone = user_data.clone();
         let thread = tokio::spawn(USER_PROPERTIES.scope(
             RefCell::new(None),
-            GENERAL_PROPERTIES.scope(RefCell::new(None), main_loop(channel.1, data_clone)),
+            GENERAL_PROPERTIES.scope(RefCell::new(None), main_loop(request_channel.1, response_channel.0, data_clone)),
         ));
         let execution_time = calculate_next_execution_time(user_data.user_data.clone(), true).await;
         info!(
@@ -54,8 +67,9 @@ impl UserInstance {
         Self {
             user_instance_data: user_data,
             thread_handle: thread,
-            sender: channel.0,
-            execution_time: execution_time,
+            request_sender: request_channel.0,
+            response_reciever: RwLock::new(response_channel.1),
+            execution_time,
         }
     }
 }
@@ -72,12 +86,15 @@ static DEFAULT_PROPERTIES: RwCell<ThreadShare<GeneralProperties>> =
 pub async fn watchdog(
     instances: Arc<RwLock<InstanceMap>>,
     db: &DatabaseConnection,
+    receiver: &mut Receiver<()>,
 ) -> GenResult<()> {
-    let users = UserData::get_all_usernames(db).await?;
-    start_stop_instances(db, instances, &users).await?;
-    info!("Users: {users:#?}");
-    loop {}
-    Ok(())
+    loop {
+        let _wait = timeout(Duration::from_secs(60 * 5), receiver.recv()).await;
+        info!("Updating users");
+        let users = UserData::get_all_usernames(db).await?;
+        start_stop_instances(db, instances.clone(), &users).await?;
+        info!("Users: {users:#?}");
+    }
 }
 
 async fn start_stop_instances(
@@ -119,6 +136,7 @@ async fn start_stop_instances(
 
     add_instances(db, &instances_to_add, &mut active_instances).await?;
     stop_instances(&instances_to_remove, &mut active_instances);
+    refresh_instances(db, &instances_to_refresh, &mut active_instances).await?;
     Ok(())
 }
 
@@ -129,6 +147,19 @@ fn stop_instances(instances_to_stop: &Vec<String>, active_instances: &mut Instan
         }
         active_instances.remove(instance_name);
     }
+}
+
+async fn refresh_instances(
+    db: &DatabaseConnection,
+    instances_to_refresh: &Vec<String>,
+    active_instances: &mut InstanceMap,
+) -> GenResult<()> {
+    for insance_name in instances_to_refresh {
+        if let Some(instance) = active_instances.get(insance_name) {
+            instance.user_instance_data.update_user(db).await?;
+        }
+    }
+    Ok(())
 }
 
 async fn add_instances(
