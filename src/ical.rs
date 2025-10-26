@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     FailureType, GenResult, Shift, ShiftState, create_ical_filename, create_shift_link, get_data,
-    set_get_name,
+    get_set_name,
 };
 use crate::{email::TIME_DESCRIPTION, errors::ResultLog};
 use chrono::{Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
@@ -324,7 +324,7 @@ pub fn create_ical(
     let (user, properties) = get_data();
     let metadata_shifts_hashmap: HashMap<i64, &Shift> =
         metadata.into_iter().map(|x| (x.magic_number, x)).collect();
-    let name = set_get_name(None);
+    let name = get_set_name(None);
     let admin_email = &properties.support_mail;
     // get the current systemtime as a unix timestamp
     let current_timestamp = SystemTime::now()

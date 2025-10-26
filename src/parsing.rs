@@ -3,7 +3,7 @@ use crate::errors::{check_if_webcom_unavailable, check_sign_in_error, OptionResu
 use crate::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
 use crate::health::ApplicationLogbook;
 use crate::{
-    FailureType, GenResult, Shift, set_get_name,
+    FailureType, GenResult, Shift, get_set_name,
     wait_until_loaded,
 };
 use async_recursion::async_recursion;
@@ -182,6 +182,6 @@ async fn sign_in_webcom(driver: &WebDriver, user: &str, pass: &str) -> GenResult
         .next()
         .result()?
         .to_string();
-    set_get_name(Some(name));
+    get_set_name(Some(name));
     Ok(())
 }

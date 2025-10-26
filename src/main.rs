@@ -9,23 +9,6 @@ extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
-use dotenvy::dotenv_override;
-use dotenvy::var;
-use sea_orm::Database;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use tokio::fs;
-use tokio::fs::write;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::LazyLock;
-use time::macros::format_description;
-use tokio::runtime::Handle;
-use tokio::sync::RwLock;
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::mpsc::channel;
-use tokio::task::JoinHandle;
-use tokio::task_local;
 use crate::api::api;
 use crate::errors::FailureType;
 use crate::errors::ResultLog;
@@ -37,22 +20,39 @@ use crate::shift::*;
 use crate::variables::GeneralProperties;
 use crate::variables::UserData;
 use crate::variables::UserInstanceData;
-use crate::watchdog::{InstanceMap, RequestResponse};
 use crate::watchdog::watchdog;
+use crate::watchdog::{InstanceMap, RequestResponse};
 use crate::webcom::webcom_instance;
+use dotenvy::dotenv_override;
+use dotenvy::var;
+use sea_orm::Database;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use time::macros::format_description;
+use tokio::fs;
+use tokio::fs::write;
+use tokio::runtime::Handle;
+use tokio::sync::RwLock;
+use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::task::JoinHandle;
+use tokio::task_local;
 
-pub mod email;
-pub mod errors;
+mod api;
+mod email;
+mod errors;
 mod execution;
-pub mod gebroken_shifts;
+mod gebroken_shifts;
 mod health;
 mod ical;
-pub mod kuma;
+mod kuma;
 mod parsing;
-pub mod shift;
+mod shift;
 mod variables;
 mod watchdog;
-mod api;
 mod webcom;
 mod webdriver;
 
@@ -117,18 +117,26 @@ fn create_ical_filename() -> String {
     }
 }
 
-pub fn create_path(filename: &str) -> PathBuf {
-    let (user, properties) = get_data();
+pub fn create_path_local(user: Arc<UserData>, properties: Arc<GeneralProperties>,filename: &str) -> PathBuf {
     let mut path = PathBuf::from(&properties.file_target);
     path.push(&user.user_name);
     _ = fs::create_dir_all(&path);
     path.push(filename);
-
     path
 }
 
-fn set_get_name(set_new_name: Option<String>) -> String {
-    let path = create_path("name");
+pub fn create_path(filename: &str) -> PathBuf {
+    let (user, properties) = get_data();
+    create_path_local(user, properties, filename)
+}
+
+fn get_set_name(set_new_name: Option<String>) -> String {
+    let (user, properties) = get_data();
+    get_set_name_local(user, properties, set_new_name)
+}
+
+pub fn get_set_name_local(user: Arc<UserData>, properties: Arc<GeneralProperties>, set_new_name: Option<String>) -> String {
+    let path = create_path_local(user, properties,"name");
     // Just return constant name if already set
     if let Ok(const_name_option) = NAME.read() {
         if let Some(const_name) = const_name_option.clone()
@@ -146,7 +154,10 @@ fn set_get_name(set_new_name: Option<String>) -> String {
         && new_name != name
     {
         let new_name_clone = new_name.clone();
-        tokio::task::block_in_place(move || {Handle::current().block_on(write(&path, &new_name_clone))}).error("Opslaan van naam");
+        tokio::task::block_in_place(move || {
+            Handle::current().block_on(write(&path, &new_name_clone))
+        })
+        .error("Opslaan van naam");
         name = new_name;
     }
     if let Ok(mut const_name) = NAME.write() {
@@ -160,8 +171,14 @@ fn set_get_name(set_new_name: Option<String>) -> String {
 /// if it is not
 /// get the exit code of the previous join handle and set it
 /// spawn a new webcom instance
-async fn spawn_webcom_instance(start_request: StartRequest, thread_store: &mut Option<JoinHandle<FailureType>>, last_exit_code: &mut FailureType) -> bool {
-    if let Some(thread) = thread_store && !thread.is_finished() {
+async fn spawn_webcom_instance(
+    start_request: StartRequest,
+    thread_store: &mut Option<JoinHandle<FailureType>>,
+    last_exit_code: &mut FailureType,
+) -> bool {
+    if let Some(thread) = thread_store
+        && !thread.is_finished()
+    {
         return false;
     } else if let Some(thread) = thread_store {
         *last_exit_code = thread.await.unwrap_or_default();
@@ -169,45 +186,57 @@ async fn spawn_webcom_instance(start_request: StartRequest, thread_store: &mut O
     let (user, properties) = get_data();
     *thread_store = Some(tokio::spawn(USER_PROPERTIES.scope(
         RefCell::new(Some(user)),
-        GENERAL_PROPERTIES.scope(RefCell::new(Some(properties)), webcom_instance(start_request)),
+        GENERAL_PROPERTIES.scope(
+            RefCell::new(Some(properties)),
+            webcom_instance(start_request),
+        ),
     )));
     true
 }
 
-fn is_webcom_instance_active (thread_store: &Option<JoinHandle<FailureType>>) -> bool {
-    thread_store.as_ref().is_some_and(|thread| !thread.is_finished())
+fn is_webcom_instance_active(thread_store: &Option<JoinHandle<FailureType>>) -> bool {
+    thread_store
+        .as_ref()
+        .is_some_and(|thread| !thread.is_finished())
 }
 
 /*
 This starts the WebDriver session
 Loads the main logic, and retries if it fails
 */
-async fn user_instance(receiver: Receiver<StartRequest>, sender: Sender<RequestResponse>, instance: UserInstanceData) {
+async fn user_instance(
+    receiver: Receiver<StartRequest>,
+    sender: Sender<RequestResponse>,
+    instance: UserInstanceData,
+) {
     let mut receiver = receiver;
     let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
     let mut last_exit_code = FailureType::default();
     loop {
         debug!("Waiting for notification");
-        let start_request = receiver
-            .recv()
-            .await
-            .expect("Notification channel closed");
+        let start_request = receiver.recv().await.expect("Notification channel closed");
 
         let (user, _properties) = set_data(&instance).await;
 
         let response = match start_request {
             StartRequest::Logbook => Some(RequestResponse::Logbook(ApplicationLogbook::load())),
-            StartRequest::Name => Some(RequestResponse::Name(set_get_name(None))),
-            StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(&webcom_thread))),
-            StartRequest::Api => Some(RequestResponse::Active(spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await)),
+            StartRequest::Name => Some(RequestResponse::Name(get_set_name(None))),
+            StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(
+                &webcom_thread,
+            ))),
+            StartRequest::Api => Some(RequestResponse::Active(
+                spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await,
+            )),
             StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
             StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
-            _ => {spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await; None}
+            _ => {
+                spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await;
+                None
+            }
         };
         if let Some(response) = response {
             sender.try_send(response).info("Send response");
         }
-
 
         if start_request == StartRequest::Single {
             break;

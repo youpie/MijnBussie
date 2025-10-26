@@ -9,7 +9,7 @@ use crate::{
     }, parsing::{
         load_calendar, load_current_month_shifts, load_next_month_shifts,
         load_previous_month_shifts,
-    }, set_get_name, webdriver::{get_driver, wait_until_loaded, wait_untill_redirect}, GenError, GenResult, FALLBACK_URL, MAIN_URL
+    }, get_set_name, webdriver::{get_driver, wait_until_loaded, wait_untill_redirect}, GenError, GenResult, FALLBACK_URL, MAIN_URL
 };
 
 // Main program logic that has to run, if it fails it will all be reran.
@@ -128,7 +128,7 @@ pub async fn webcom_instance(start_reason: StartRequest) -> FailureType {
         .await
         .warn("Creating Lock file");
 
-    let name = set_get_name(None);
+    let name = get_set_name(None);
     let mut logbook = ApplicationLogbook::load();
     let mut failure_counter = IncorrectCredentialsCount::load();
 

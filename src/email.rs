@@ -11,7 +11,7 @@ use thiserror::Error;
 use time::{Date, macros::format_description};
 use url::Url;
 
-use crate::{Shift, SignInFailure, create_ical_filename, create_shift_link, set_get_name};
+use crate::{Shift, SignInFailure, create_ical_filename, create_shift_link, get_set_name};
 
 const ERROR_VALUE: &str = "HIER HOORT WAT ANDERS DAN DEZE TEKST TE STAAN, CONFIGURATIE INCORRECT";
 const SENDER_NAME: &str = "Peter";
@@ -284,7 +284,7 @@ fn create_send_new_email(
     let mut changed_mail_html = fs::read_to_string("./templates/changed_shift.html").unwrap();
     let shift_table = fs::read_to_string("./templates/shift_table.html").unwrap();
     let enkel_meervoud = if new_shifts.len() != 1 { "en" } else { "" };
-    let name = set_get_name(None);
+    let name = get_set_name(None);
     let new_update_text = match update {
         true => "geupdate",
         false => "nieuwe",
@@ -379,7 +379,7 @@ fn send_removed_shifts_mail(
         "zijn"
     };
     let email_shift_s = if removed_shifts.len() == 1 { "" } else { "en" };
-    let name = set_get_name(None);
+    let name = get_set_name(None);
     let mut shift_tables = String::new();
     for shift in &removed_shifts {
         let shift_table_clone = strfmt!(&shift_table,
@@ -496,7 +496,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let onboarding_html = fs::read_to_string("./templates/onboarding_base.html").unwrap();
 
-    let name = set_get_name(None);
+    let name = get_set_name(None);
 
     let agenda_url = create_footer(true).unwrap_or(ERROR_VALUE.to_owned());
     let agenda_url_webcal = agenda_url.clone().replace("https", "webcal");
@@ -578,7 +578,7 @@ pub fn send_failed_signin_mail(
     info!("Sending failed sign in mail");
     let mailer = load_mailer(&env)?;
     let still_not_working_modifier = if first_time { "" } else { "nog steeds " };
-    let name = set_get_name(None);
+    let name = get_set_name(None);
     let verbose_error = match &error.error {
         Some(SignInFailure::IncorrectCredentials) => {
             "Incorrecte inloggegevens, heb je misschien je wachtwoord veranderd?"
@@ -607,7 +607,7 @@ pub fn send_failed_signin_mail(
 
     let login_failure_html = strfmt!(&login_failure_html,
         still_not_working_modifier,
-        name => set_get_name(None),
+        name => get_set_name(None),
         additional_text => password_change_text,
         retry_counter => error.retry_count,
         signin_error => verbose_error.to_string(),
@@ -639,7 +639,7 @@ pub fn send_sign_in_succesful() -> GenResult<()> {
 
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let login_success_html = fs::read_to_string("./templates/signin_succesful.html").unwrap();
-    let name = set_get_name(None);
+    let name = get_set_name(None);
     info!("Sending succesful sign in mail");
 
     let mailer = load_mailer(&env)?;
