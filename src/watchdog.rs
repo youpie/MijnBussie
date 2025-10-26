@@ -18,10 +18,7 @@ use tokio::{
 };
 
 use crate::{
-    GENERAL_PROPERTIES, GenResult, USER_PROPERTIES,
-    execution::{StartRequest, calculate_next_execution_time, get_system_time},
-    user_instance,
-    variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
+    execution::{calculate_next_execution_time, get_system_time, StartRequest}, kuma, user_instance, variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData}, GenResult, GENERAL_PROPERTIES, USER_PROPERTIES
 };
 use crate::errors::FailureType;
 use crate::health::ApplicationLogbook;
@@ -125,15 +122,20 @@ async fn start_stop_instances(
         };
     }
     // Load the default preferences and write them to the global variable
-    if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
-        *default_properties.write().await = GeneralProperties::load_default_preferences(db).await?;
+    let default_preferences = if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
+        let default_preferences = GeneralProperties::load_default_preferences(db).await?;
+        *default_properties.write().await = default_preferences.clone();
+        default_preferences
+
     } else {
         let default_preferences = GeneralProperties::load_default_preferences(db).await?;
         DEFAULT_PROPERTIES
             .write()
             .await
-            .replace(Arc::new(RwLock::new(default_preferences)));
-    }
+            .replace(Arc::new(RwLock::new(default_preferences.clone())));
+        default_preferences
+    };
+    
     let instances_to_remove =
         get_equal_instances(InstanceState::Remove, &instances_state, &active_instances);
     let instances_to_refresh =
@@ -143,6 +145,7 @@ async fn start_stop_instances(
     add_instances(db, &instances_to_add, &mut active_instances).await?;
     stop_instances(&instances_to_remove, &mut active_instances);
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await?;
+    kuma::manage_users(&instances_to_add, &instances_to_remove, &active_instances, &default_preferences).await?;
     Ok(())
 }
 

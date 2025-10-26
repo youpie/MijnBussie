@@ -2,9 +2,9 @@ use crate::email::DATE_DESCRIPTION;
 use crate::errors::{check_if_webcom_unavailable, check_sign_in_error, OptionResult};
 use crate::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
 use crate::health::ApplicationLogbook;
+use crate::webdriver::wait_until_loaded;
 use crate::{
     FailureType, GenResult, Shift, get_set_name,
-    wait_until_loaded,
 };
 use async_recursion::async_recursion;
 use thirtyfour::prelude::ElementQueryable;

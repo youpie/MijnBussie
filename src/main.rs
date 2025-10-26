@@ -4,6 +4,8 @@ const FALLBACK_URL: [&str; 2] = [
     "https://dmz-wbc-web01.connexxion.nl/WebComm/default.aspx",
     "https://dmz-wbc-web02.connexxion.nl/WebComm/default.aspx",
 ];
+const APPLICATION_NAME: &str = "MijnBussie";
+
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -117,7 +119,7 @@ fn create_ical_filename() -> String {
     }
 }
 
-pub fn create_path_local(user: Arc<UserData>, properties: Arc<GeneralProperties>,filename: &str) -> PathBuf {
+pub fn create_path_local(user: &UserData, properties: &GeneralProperties,filename: &str) -> PathBuf {
     let mut path = PathBuf::from(&properties.file_target);
     path.push(&user.user_name);
     _ = fs::create_dir_all(&path);
@@ -127,15 +129,15 @@ pub fn create_path_local(user: Arc<UserData>, properties: Arc<GeneralProperties>
 
 pub fn create_path(filename: &str) -> PathBuf {
     let (user, properties) = get_data();
-    create_path_local(user, properties, filename)
+    create_path_local(user.as_ref(), properties.as_ref(), filename)
 }
 
 fn get_set_name(set_new_name: Option<String>) -> String {
     let (user, properties) = get_data();
-    get_set_name_local(user, properties, set_new_name)
+    get_set_name_local(user.as_ref(), properties.as_ref(), set_new_name)
 }
 
-pub fn get_set_name_local(user: Arc<UserData>, properties: Arc<GeneralProperties>, set_new_name: Option<String>) -> String {
+pub fn get_set_name_local(user: &UserData, properties: &GeneralProperties, set_new_name: Option<String>) -> String {
     let path = create_path_local(user, properties,"name");
     // Just return constant name if already set
     if let Ok(const_name_option) = NAME.read() {

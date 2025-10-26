@@ -7,7 +7,6 @@ use lettre::{
 use std::{collections::HashMap, fs, path::PathBuf};
 use strfmt::strfmt;
 use thirtyfour::error::{WebDriverErrorInfo, WebDriverResult};
-use thiserror::Error;
 use time::{Date, macros::format_description};
 use url::Url;
 
@@ -34,14 +33,6 @@ impl StrikethroughString for String {
             .map(|c| format!("{}{}", c, '\u{0336}'))
             .collect()
     }
-}
-
-#[derive(Error, Debug, PartialEq)]
-pub enum PreviousShiftsError {
-    #[error("Parsing of previous shifts has failed. Error: {0}")]
-    Generic(String),
-    #[error("Previous shifts file IO error. Error: {0}")]
-    Io(String),
 }
 
 pub struct EnvMailVariables {
@@ -80,36 +71,6 @@ impl EnvMailVariables {
         let send_welcome_mail = user.user_properties.send_welcome_mail;
         let send_removed_shift = user.user_properties.send_mail_removed_shift;
         let send_failed_signin_mail = user.user_properties.send_failed_signin_mail;
-        Self {
-            smtp_server,
-            smtp_username,
-            smtp_password,
-            mail_from,
-            mail_to,
-            mail_error_to,
-            send_email_new_shift,
-            send_mail_updated_shift,
-            send_error_mail,
-            send_welcome_mail,
-            send_failed_signin_mail,
-            send_removed_shift,
-        }
-    }
-    pub fn new_kuma() -> Self {
-        let (user, properties) = get_data();
-        let kuma_properties = properties.kuma_properties.clone();
-        let smtp_server = kuma_properties.kuma_email_properties.smtp_server;
-        let smtp_username = kuma_properties.kuma_email_properties.smtp_username;
-        let smtp_password = kuma_properties.kuma_email_properties.smtp_password;
-        let mail_from = kuma_properties.kuma_email_properties.mail_from;
-        let mail_to = user.email.clone();
-        let mail_error_to = properties.support_mail.clone();
-        let send_email_new_shift = user.user_properties.send_mail_new_shift;
-        let send_mail_updated_shift = user.user_properties.send_mail_updated_shift;
-        let send_error_mail = user.user_properties.send_error_mail;
-        let send_welcome_mail = user.user_properties.send_welcome_mail;
-        let send_failed_signin_mail = user.user_properties.send_failed_signin_mail;
-        let send_removed_shift = user.user_properties.send_mail_removed_shift;
         Self {
             smtp_server,
             smtp_username,
