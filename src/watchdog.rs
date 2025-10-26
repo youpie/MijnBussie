@@ -110,9 +110,7 @@ async fn start_stop_instances(
     active_instances: Arc<RwLock<InstanceMap>>,
     db_users: &Vec<String>,
 ) -> GenResult<()> {
-    info!("A");
     let mut active_instances = active_instances.write().await;
-    info!("B");
     let mut instances_state: HashMap<InstanceName, InstanceState> = HashMap::new();
     for active_instance in &mut *active_instances {
         instances_state.insert(active_instance.0.to_owned(), InstanceState::Remove);
@@ -126,7 +124,6 @@ async fn start_stop_instances(
             }
         };
     }
-    info!("C");
     // Load the default preferences and write them to the global variable
     if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
         *default_properties.write().await = GeneralProperties::load_default_preferences(db).await?;
@@ -143,13 +140,9 @@ async fn start_stop_instances(
         get_equal_instances(InstanceState::Remain, &instances_state, &active_instances);
     let instances_to_add =
         get_equal_instances(InstanceState::New, &instances_state, &active_instances);
-    info!("D");
     add_instances(db, &instances_to_add, &mut active_instances).await?;
-    info!("Add");
     stop_instances(&instances_to_remove, &mut active_instances);
-    info!("Stop");
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await?;
-    info!("E");
     Ok(())
 }
 

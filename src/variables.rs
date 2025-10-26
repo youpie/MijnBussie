@@ -24,6 +24,10 @@ pub struct UserInstanceData {
 }
 
 impl UserInstanceData {
+    pub async fn set_data_local(&self) -> (UserData, GeneralProperties) {
+        (self.user_data.read().await.clone(), self.general_settings.read().await.clone())
+    }
+
     pub async fn load_user(
         db: &DatabaseConnection,
         username: &str,

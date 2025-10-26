@@ -2,64 +2,54 @@ use kuma_client::monitor::{MonitorGroup, MonitorType};
 use kuma_client::{Client, monitor, notification};
 use std::collections::HashMap;
 use std::fs::read_to_string;
-use std::time::Duration;
+use std::str::FromStr;
 use strfmt::strfmt;
-use tokio::time::sleep;
 use url::Url;
 
 use crate::errors::OptionResult;
-use crate::{GenResult, email, get_data, set_get_name};
+use crate::variables::{GeneralProperties, UserData, UserInstanceData};
+use crate::watchdog::InstanceMap;
+use crate::{GenResult, email};
 
 const COLOR_RED: &str = "#a51d2d";
 const COLOR_GREEN: &str = "#26a269";
 
-pub async fn first_run() -> GenResult<()> {
-    let (user, properties) = get_data();
-    let kuma_properties = properties.kuma_properties.clone();
-    let url: Url = kuma_properties.domain.parse()?;
-    let username = kuma_properties.username;
-    let password = kuma_properties.password;
-    let kuma_client = connect_to_kuma(&url, username, password).await?;
-    sleep(Duration::from_millis(100)).await;
-    let notification_id = create_notification(&kuma_client, &user.user_name, &url).await?;
-    if let Some(monitor_id) =
-        get_monitor_type_id(&kuma_client, &user.user_name, MonitorType::Push, false).await?
-    {
-        debug!("id found in kuma online, ID: {monitor_id}");
-        if notification_id.1 {
-            info!("Assigning new notification to monitor");
-            let mut monitor = kuma_client.get_monitor(monitor_id).await?;
-            *monitor.common_mut().notification_id_list_mut() =
-                Some(HashMap::from([(notification_id.0.to_string(), true)]));
-            kuma_client.edit_monitor(monitor).await?;
-        }
+const GROUP_NAME: &str = "MijnBussie";
 
-        return Ok(());
+pub async fn manage_users(instances_to_create: &Vec<String>,instances_to_remove: &Vec<String>,
+    active_instances: &InstanceMap) -> GenResult<()> {
+    for instance_name in instances_to_create {
+        if let Some(instance) = active_instances.get(instance_name) {
+            let (user, properties) = instance.user_instance_data.set_data_local().await;
+            let kuma_properties = properties.kuma_properties;
+            let client = connect_to_kuma(&Url::from_str(&kuma_properties.domain)?, &kuma_properties.username, &kuma_properties.password).await?;
+        }
     }
-    let _monitor_id = create_monitor(&kuma_client, &user.user_name, notification_id.0).await?;
     Ok(())
 }
 
-async fn connect_to_kuma(url: &Url, username: String, password: String) -> GenResult<Client> {
+async fn connect_to_kuma(url: &Url, username: &str, password: &str) -> GenResult<Client> {
     Ok(Client::connect(kuma_client::Config {
         url: url.to_owned(),
-        username: Some(username),
-        password: Some(password),
+        username: Some(username.to_owned()),
+        password: Some(password.to_owned()),
         ..Default::default()
     })
     .await?)
 }
 
 async fn create_monitor(
+    user: &UserData,
+    properties: &GeneralProperties,
     kuma_client: &Client,
     user_name: &str,
     notification_id: i32,
 ) -> GenResult<i32> {
-    let (user, properties) = get_data();
+
     let heartbeat_interval: i32 = (user.user_properties.execution_interval_minutes * 60)
         + properties.expected_execution_time_seconds;
     let heartbeat_retry: i32 = properties.kuma_properties.hearbeat_retry;
-    let group_id: i32 = get_monitor_type_id(kuma_client, "Webcom Ical", MonitorType::Group, true)
+    let group_id: i32 = get_monitor_type_id(kuma_client, GROUP_NAME, MonitorType::Group)
         .await?
         .unwrap_or_default();
     let monitor = monitor::MonitorPush {
@@ -80,11 +70,12 @@ async fn create_monitor(
 
 // Create a new notification if it does not already exist. The second value tells that a new notification has been created
 async fn create_notification(
+    user: &UserData,
+    properties: &GeneralProperties,
     kuma_client: &Client,
     user_name: &str,
     kuma_url: &Url,
 ) -> GenResult<(i32, bool)> {
-    let (_user, properties) = get_data();
     let base_html =
         read_to_string("./templates/email_base.html").expect("Can't get email base template");
     let offline_html =
@@ -126,7 +117,7 @@ async fn create_notification(
                 "Notification for user {user_name} already exists, ID: {:?}. Not creating new one",
                 notification.id
             );
-            return Ok((notification.id.unwrap_or_default(), false));
+            return Ok((notification.id.result_reason("Getting notification ID")?, false));
         }
     }
     info!("Notification for user {user_name} does NOT yet exist, creating one");
@@ -143,9 +134,9 @@ async fn create_notification(
         "smtpFrom": email_env.mail_from,
         "customBody": body,
         "customSubject": "{% if status contains \"Up\" %}
-Webcom Ical weer online
+MijnBussie storing verholpen!
 {% else %}
-!! Webcom Ical OFFline !!
+MijnBussie heeft een storing
 {% endif %}",
         "type": "smtp",
         "smtpSecure": secure,
@@ -159,7 +150,7 @@ Webcom Ical weer online
     };
 
     let notification_response = kuma_client.add_notification(notification.clone()).await?;
-    let id = notification_response.id.result()?;
+    let id = notification_response.id.result_reason("Getting new notification ID")?;
     info!("Created notification with ID {id}");
     Ok((id, true))
 }
@@ -167,35 +158,29 @@ Webcom Ical weer online
 async fn get_monitor_type_id(
     kuma_client: &Client,
     group_name: &str,
-    monitor_type: MonitorType,
-    create_new: bool,
 ) -> GenResult<Option<i32>> {
     let current_monitors = kuma_client.get_monitors().await?;
     // Check if a group with the same name of "group_name" exists
     for (_id, monitor) in current_monitors.into_iter() {
-        if monitor.monitor_type() == monitor_type {
+        if monitor.monitor_type() == MonitorType::Group {
             if monitor.common().name() == &Some(group_name.to_string()) {
                 debug!(
                     "Existing monitor group has been found, ID: {:?}",
                     monitor.common().id()
                 );
-                return Ok(Some(monitor.common().id().unwrap_or_default()));
+                return Ok(Some(monitor.common().id().result_reason("Getting monitor ID")?));
             }
         }
     }
     info!("Monitor group has not been found");
     // otherwise create a new one
-    if create_new {
-        let new_monitor = kuma_client
-            .add_monitor(MonitorGroup {
-                name: Some(group_name.to_string()),
-                ..Default::default()
-            })
-            .await?;
-        let id = new_monitor.common().id().unwrap_or_default();
-        info!(", created new one with id {id}");
-        return Ok(Some(new_monitor.common().id().unwrap_or_default()));
-    }
-    info!(", not creating new one");
-    Ok(None)
+    let new_monitor = kuma_client
+        .add_monitor(MonitorGroup {
+            name: Some(group_name.to_string()),
+            ..Default::default()
+        })
+        .await?;
+    let id = new_monitor.common().id().result_reason("Getting new monitor ID")?;
+    info!(", created new one with id {id}");
+    Ok(Some(id))
 }
