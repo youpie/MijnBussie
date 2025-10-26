@@ -6,13 +6,11 @@ use std::str::FromStr;
 use strfmt::strfmt;
 use url::Url;
 
+use crate::email::{COLOR_GREEN, COLOR_RED};
 use crate::errors::OptionResult;
 use crate::variables::{GeneralProperties, UserData};
 use crate::watchdog::InstanceMap;
 use crate::{ GenResult, APPLICATION_NAME};
-
-const COLOR_RED: &str = "#a51d2d";
-const COLOR_GREEN: &str = "#26a269";
 
 pub async fn manage_users(instances_to_create: &Vec<String>,instances_to_remove: &Vec<String>,
     active_instances: &InstanceMap, properties: &GeneralProperties) -> GenResult<()> {

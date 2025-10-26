@@ -4,8 +4,7 @@ const FALLBACK_URL: [&str; 2] = [
     "https://dmz-wbc-web01.connexxion.nl/WebComm/default.aspx",
     "https://dmz-wbc-web02.connexxion.nl/WebComm/default.aspx",
 ];
-const APPLICATION_NAME: &str = "MijnBussie";
-
+const APPLICATION_NAME: &str = "Mijn Bussie";
 
 extern crate pretty_env_logger;
 #[macro_use]
@@ -18,6 +17,7 @@ use crate::errors::SignInFailure;
 use crate::execution::StartRequest;
 use crate::execution::execution_timer;
 use crate::health::ApplicationLogbook;
+use crate::ical::get_ical_path;
 use crate::shift::*;
 use crate::variables::GeneralProperties;
 use crate::variables::UserData;
@@ -32,7 +32,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use time::macros::format_description;
 use tokio::fs;
 use tokio::fs::write;
@@ -61,13 +60,10 @@ mod webdriver;
 type GenResult<T> = Result<T, GenError>;
 type GenError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
-type StdLock<T> = std::sync::RwLock<T>;
-
-static NAME: LazyLock<StdLock<Option<String>>> = LazyLock::new(|| StdLock::new(None));
-
 task_local! {
-    pub static USER_PROPERTIES: RefCell<Option<Arc<UserData>>>;
-    pub static GENERAL_PROPERTIES: RefCell<Option<Arc<GeneralProperties>>>;
+    static NAME: RefCell<Option<String>>;
+    static USER_PROPERTIES: RefCell<Option<Arc<UserData>>>;
+    static GENERAL_PROPERTIES: RefCell<Option<Arc<GeneralProperties>>>;
 }
 
 // Get thread specific data
@@ -140,12 +136,8 @@ fn get_set_name(set_new_name: Option<String>) -> String {
 pub fn get_set_name_local(user: &UserData, properties: &GeneralProperties, set_new_name: Option<String>) -> String {
     let path = create_path_local(user, properties,"name");
     // Just return constant name if already set
-    if let Ok(const_name_option) = NAME.read() {
-        if let Some(const_name) = const_name_option.clone()
-            && set_new_name.is_none()
-        {
-            return const_name;
-        }
+    if let Some(const_name) = &*NAME.get().borrow() && set_new_name.is_none() {
+        return const_name.to_owned();
     }
     let mut name = std::fs::read_to_string(&path)
         .ok()
@@ -162,9 +154,7 @@ pub fn get_set_name_local(user: &UserData, properties: &GeneralProperties, set_n
         .error("Opslaan van naam");
         name = new_name;
     }
-    if let Ok(mut const_name) = NAME.write() {
-        *const_name = Some(name.clone());
-    }
+    NAME.get().replace(Some(name.clone()));
     name
 }
 
@@ -231,6 +221,7 @@ async fn user_instance(
             )),
             StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
             StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
+            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!("{:#?}",email::send_welcome_mail(&get_ical_path(), true)))),
             _ => {
                 spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await;
                 None
@@ -250,7 +241,7 @@ async fn user_instance(
 async fn main() -> GenResult<()> {
     dotenv_override().ok();
     pretty_env_logger::init();
-    info!("Starting Webcom Ical");
+    info!("Starting {APPLICATION_NAME}");
 
     // let args = Args::parse();
 
@@ -265,6 +256,6 @@ async fn main() -> GenResult<()> {
     tokio::spawn(api(instances.clone(), watchdog_tx));
     watchdog(instances.clone(), &db, &mut watchdog_rx).await?;
 
-    info!("Stopping webcom ical");
+    info!("Stopping {APPLICATION_NAME}");
     Ok(())
 }

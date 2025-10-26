@@ -35,6 +35,8 @@ enum Action {
     ExitCode,
     #[strum(ascii_case_insensitive)]
     UserData,
+    #[strum(ascii_case_insensitive)]
+    Welcome,
 }
 
 pub async fn api(instance_map: Arc<RwLock<InstanceMap>>, watchdog_sender: Sender<String>) {
@@ -82,6 +84,7 @@ async fn send_request(request_type: String, request_sender: &Sender<StartRequest
         Action::Start => StartRequest::Api,
         Action::ExitCode => StartRequest::ExitCode,
         Action::UserData => StartRequest::UserData,
+        Action::Welcome => StartRequest::Welcome
     };
     request_sender.try_send(start_request)?;
     let response = timeout(Duration::from_secs(2), response_receiver.recv()).await?.result_reason("No response")?;

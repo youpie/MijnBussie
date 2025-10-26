@@ -7,11 +7,12 @@ use entity::{
     donation_text, email_properties, general_properties_db, kuma_properties, user_data,
     user_properties,
 };
-use sea_orm::RelationTrait;
+use sea_orm::{sea_query, QueryResult, RelationTrait, TryGetable, Value};
 use sea_orm::{ColumnTrait, QuerySelect};
 use sea_orm::{DatabaseConnection, DerivePartialModel, EntityTrait, QueryFilter};
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use tokio::sync::RwLock;
+use secrecy::{ExposeSecret, SecretString, SerializableSecret};
 
 use crate::GenResult;
 
@@ -141,13 +142,73 @@ pub struct KumaProperties {
     pub use_ssl: bool,
 }
 
+
+#[derive(Clone, Debug)]
+pub struct Secret(pub SecretString);
+
+// 1) From<Secret> for sea_orm::Value
+impl From<Secret> for Value {
+    fn from(source: Secret) -> Self {
+        // careful: this exposes the inner secret as plain text for storage
+        source.0.expose_secret().to_owned().into()
+    }
+}
+
+// 2) sea_orm::TryGetable for Secret (how to read from QueryResult)
+impl TryGetable for Secret {
+    fn try_get_by<I: sea_orm::ColIdx>(res: &QueryResult, idx: I) -> Result<Self, sea_orm::TryGetError> {
+        // delegate to String's TryGetable then wrap
+        <String as TryGetable>::try_get_by(res, idx).map(|s| Secret(SecretString::new(s.into())))
+    }
+}
+
+// 3) sea_query::ValueType for Secret (converts sea_orm::Value -> Secret)
+impl sea_query::ValueType for Secret {
+    fn try_from(v: Value) -> Result<Self, sea_query::ValueTypeErr> {
+        // delegate to String's conversion then wrap
+        <String as sea_query::ValueType>::try_from(v).map(|s| Secret(SecretString::new(s.into())))
+    }
+
+    fn type_name() -> String {
+        stringify!(Secret).to_owned()
+    }
+
+    fn array_type() -> sea_query::ArrayType {
+        sea_query::ArrayType::String
+    }
+
+    fn column_type() -> sea_query::ColumnType {
+        // unbounded string column type; adjust if you want a length
+        sea_query::ColumnType::String(sea_query::StringLen::None)
+    }
+}
+
+// 4) sea_query::Nullable for Secret
+impl sea_query::Nullable for Secret {
+    fn null() -> Value {
+        // delegate to String's `null()`
+        <String as sea_query::Nullable>::null()
+    }
+}
+
+impl Serialize for Secret {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // redact the value but keep length info if you like
+        let len = self.0.expose_secret().len();
+        serializer.serialize_str(&format!("[REDACTED, {} bytes]", len))
+    }
+}
+
 #[allow(dead_code)]
 #[derive(DerivePartialModel, Debug, Clone, Serialize)]
 #[sea_orm(entity = "user_data::Entity")]
 pub struct UserData {
     pub user_name: String,
     pub personeelsnummer: String,
-    pub password: String,
+    pub password: Secret,
     pub email: String,
     pub file_name: String,
     #[sea_orm(nested)]
@@ -203,13 +264,13 @@ impl UserData {
     fn decrypt_password(&mut self) -> GenResult<()> {
         let secret_string = var("PASSWORD_SECRET")?;
         let secret = secret_string.as_bytes();
-        self.password = String::from_utf8(
+        self.password = Secret(SecretString::new(String::from_utf8(
             simplestcrypt::deserialize_and_decrypt(
                 secret,
-                &BASE64_STANDARD_NO_PAD.decode(&self.password)?,
+                &BASE64_STANDARD_NO_PAD.decode(self.password.0.expose_secret())?,
             )
             .unwrap(),
-        )?;
+        )?.into()));
         Ok(())
     }
 }

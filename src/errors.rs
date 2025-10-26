@@ -27,13 +27,13 @@ pub enum SignInFailure {
 
 #[derive(Debug, Error, PartialEq, Clone, Serialize, Deserialize, Default)]
 pub enum FailureType {
-    #[error("Webcom ical was niet in staat na meerdere pogingen diensten correct in te laden")]
+    #[error("Mijn Bussie was niet in staat na meerdere pogingen diensten correct in te laden")]
     TriesExceeded,
-    #[error("Webcom ical kan geen verbinding maken met de interne browser")]
+    #[error("Mijn Bussie kan geen verbinding maken met de interne browser")]
     GeckoEngine,
-    #[error("Webcom ical kon niet inloggen. Fout: {0}")]
+    #[error("Mijn Bussie kon niet inloggen. Fout: {0}")]
     SignInFailed(SignInFailure),
-    #[error("Webcom ical kon geen verbinding maken met de Webcomm site")]
+    #[error("Mijn Bussie kon geen verbinding maken met de Webcomm site")]
     ConnectError,
     #[error("Een niet-specifieke fout is opgetreden: {0}")]
     Other(String),

@@ -17,11 +17,14 @@ use tokio::{
     time::timeout,
 };
 
-use crate::{
-    execution::{calculate_next_execution_time, get_system_time, StartRequest}, kuma, user_instance, variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData}, GenResult, GENERAL_PROPERTIES, USER_PROPERTIES
-};
 use crate::errors::FailureType;
 use crate::health::ApplicationLogbook;
+use crate::{
+    GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
+    execution::{StartRequest, calculate_next_execution_time, get_system_time},
+    kuma, user_instance,
+    variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
+};
 
 #[derive(Debug, PartialEq)]
 enum InstanceState {
@@ -36,7 +39,8 @@ pub enum RequestResponse {
     Name(String),
     Active(bool),
     ExitCode(FailureType),
-    UserData(UserData)
+    UserData(UserData),
+    GenResponse(String),
 }
 
 pub struct UserInstance {
@@ -54,7 +58,13 @@ impl UserInstance {
         let data_clone = user_data.clone();
         let thread = tokio::spawn(USER_PROPERTIES.scope(
             RefCell::new(None),
-            GENERAL_PROPERTIES.scope(RefCell::new(None), user_instance(request_channel.1, response_channel.0, data_clone)),
+            GENERAL_PROPERTIES.scope(
+                RefCell::new(None),
+                NAME.scope(
+                    RefCell::new(None),
+                    user_instance(request_channel.1, response_channel.0, data_clone),
+                ),
+            ),
         ));
         let execution_time = calculate_next_execution_time(user_data.user_data.clone(), true).await;
         info!(
@@ -89,7 +99,9 @@ pub async fn watchdog(
     receiver: &mut Receiver<String>,
 ) -> GenResult<()> {
     loop {
-        if let Ok(Some(user)) = timeout(Duration::from_secs(60 * 5), receiver.recv()).await && !user.is_empty() {
+        if let Ok(Some(user)) = timeout(Duration::from_secs(60 * 5), receiver.recv()).await
+            && !user.is_empty()
+        {
             info!("Updating user {user}");
             refresh_instances(db, &vec![user], &mut *instances.write().await).await?;
         } else {
@@ -98,7 +110,6 @@ pub async fn watchdog(
             start_stop_instances(db, instances.clone(), &users).await?;
             info!("Users: {users:#?}");
         }
-
     }
 }
 
@@ -122,20 +133,20 @@ async fn start_stop_instances(
         };
     }
     // Load the default preferences and write them to the global variable
-    let default_preferences = if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
-        let default_preferences = GeneralProperties::load_default_preferences(db).await?;
-        *default_properties.write().await = default_preferences.clone();
-        default_preferences
+    let default_preferences =
+        if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
+            let default_preferences = GeneralProperties::load_default_preferences(db).await?;
+            *default_properties.write().await = default_preferences.clone();
+            default_preferences
+        } else {
+            let default_preferences = GeneralProperties::load_default_preferences(db).await?;
+            DEFAULT_PROPERTIES
+                .write()
+                .await
+                .replace(Arc::new(RwLock::new(default_preferences.clone())));
+            default_preferences
+        };
 
-    } else {
-        let default_preferences = GeneralProperties::load_default_preferences(db).await?;
-        DEFAULT_PROPERTIES
-            .write()
-            .await
-            .replace(Arc::new(RwLock::new(default_preferences.clone())));
-        default_preferences
-    };
-    
     let instances_to_remove =
         get_equal_instances(InstanceState::Remove, &instances_state, &active_instances);
     let instances_to_refresh =
@@ -145,7 +156,13 @@ async fn start_stop_instances(
     add_instances(db, &instances_to_add, &mut active_instances).await?;
     stop_instances(&instances_to_remove, &mut active_instances);
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await?;
-    kuma::manage_users(&instances_to_add, &instances_to_remove, &active_instances, &default_preferences).await?;
+    kuma::manage_users(
+        &instances_to_add,
+        &instances_to_remove,
+        &active_instances,
+        &default_preferences,
+    )
+    .await?;
     Ok(())
 }
 

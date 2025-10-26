@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use secrecy::ExposeSecret;
 use thirtyfour::{WebDriver};
 use tokio::fs::{self, write};
 
@@ -36,11 +37,11 @@ async fn main_program(
                 .map_err(|_| Box::new(FailureType::ConnectError))?
         }
     };
-    load_calendar(&driver, personeelsnummer, password).await?;
+    load_calendar(&driver, personeelsnummer, password.0.expose_secret()).await?;
     wait_until_loaded(&driver).await?;
     let mut new_shifts = load_current_month_shifts(&driver, logbook).await?;
     let mut non_relevant_shifts = vec![];
-    let ical_path = get_ical_path()?;
+    let ical_path = get_ical_path();
     if !ical_path.exists() {
         info!(
             "Existing calendar file not found, adding two extra months of shifts and removing partial calendars"

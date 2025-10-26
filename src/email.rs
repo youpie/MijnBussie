@@ -1,5 +1,5 @@
 use crate::errors::IncorrectCredentialsCount;
-use crate::{GenError, GenResult, ShiftState, get_data};
+use crate::{get_data, GenError, GenResult, ShiftState, APPLICATION_NAME};
 use lettre::{
     Message, SmtpTransport, Transport, message::header::ContentType,
     transport::smtp::authentication::Credentials,
@@ -19,9 +19,9 @@ pub const TIME_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] 
 pub const DATE_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] =
     format_description!("[day]-[month]-[year]");
 
-const COLOR_BLUE: &str = "#1a5fb4";
-const COLOR_RED: &str = "#a51d2d";
-const COLOR_GREEN: &str = "#26a269";
+pub const COLOR_BASE: &str = "#5F5AD3";
+pub const COLOR_RED: &str = "#a51d2d";
+pub const COLOR_GREEN: &str = "#26a269";
 
 trait StrikethroughString {
     fn strikethrough(&self) -> String;
@@ -276,7 +276,7 @@ fn create_send_new_email(
     )?;
     let email_body_html = strfmt!(&base_html,
         content => changed_mail_html,
-        banner_color => COLOR_BLUE,
+        banner_color => COLOR_BASE,
         footer => create_footer(false).unwrap_or(ERROR_VALUE.to_owned())
     )?;
 
@@ -365,7 +365,7 @@ fn send_removed_shifts_mail(
     )?;
     let email_body_html = strfmt!(&base_html,
         content => removed_shift_html,
-        banner_color => COLOR_BLUE,
+        banner_color => COLOR_BASE,
         footer => create_footer(false).unwrap_or_default()
     )?;
     let email = Message::builder()
@@ -482,7 +482,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
             .unwrap_or_default()
             .replace(">", "");
         format!(
-            "Als Webcom Ical een storing heeft ontvang je meestal een mail van <em>{}</em> (deze kan in je spam belanden!), op <a href=\"{kuma_url}\" style=\"color:#d97706;text-decoration:none;\">{kuma_url}</a> kan je de actuele status van Webcom Ical bekijken.",
+            "Als {APPLICATION_NAME} een storing heeft ontvang je meestal een mail van <em>{}</em> (deze kan in je spam belanden!), op <a href=\"{kuma_url}\" style=\"color:#d97706;text-decoration:none;\">{kuma_url}</a> kan je de actuele status van {APPLICATION_NAME} bekijken.",
             extracted_kuma_mail
         )
     } else {
@@ -510,14 +510,14 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     )?;
     let email_body_html = strfmt!(&base_html,
         content => onboarding_html,
-        banner_color => COLOR_BLUE,
+        banner_color => COLOR_BASE,
         footer => "".to_owned()
     )?;
     warn!("welkom mail sturen");
     let email = Message::builder()
         .from(format!("{} <{}>", SENDER_NAME, &env.mail_from).parse()?)
         .to(format!("{} <{}>", name, &env.mail_to).parse()?)
-        .subject(format!("Welkom bij Webcom Ical {}!", &name))
+        .subject(format!("Welkom bij {APPLICATION_NAME} {}!", &name))
         .header(ContentType::TEXT_HTML)
         .body(email_body_html)?;
     mailer.send(&email)?;
@@ -582,7 +582,7 @@ pub fn send_failed_signin_mail(
     )?;
 
     let email = Message::builder()
-        .from(format!("WEBCOM ICAL <{}>", &env.mail_from).parse()?)
+        .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
         .to(format!("{} <{}>", &name, &env.mail_to).parse()?)
         .subject("INLOGGEN WEBCOM NIET GELUKT!")
         .header(ContentType::TEXT_HTML)
@@ -614,9 +614,9 @@ pub fn send_sign_in_succesful() -> GenResult<()> {
     )?;
 
     let email = Message::builder()
-        .from(format!("WEBCOM ICAL <{}>", &env.mail_from).parse()?)
+        .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
         .to(format!("{} <{}>", name, &env.mail_to).parse()?)
-        .subject("Webcom Ical kan weer inloggen!")
+        .subject(format!("{APPLICATION_NAME} kan weer inloggen!"))
         .header(ContentType::TEXT_HTML)
         .body(email_body_html)?;
     mailer.send(&email)?;

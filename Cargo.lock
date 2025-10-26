@@ -3507,9 +3507,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm"
-version = "2.0.0-rc.13"
+version = "2.0.0-rc.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5ce6e9641b5b03a1d55ae3b2ee33328d58e4637093a87741b6777e536ecf359"
+checksum = "832e4c5facdd2fe19bdc02c2eab0f2b87cfaba854ac3acc94a9d0370b7903e85"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3558,9 +3558,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-macros"
-version = "2.0.0-rc.13"
+version = "2.0.0-rc.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09080671878a0bbe73732aaefe225e1cbad685a2583c839cc03943deecb28f8b"
+checksum = "2fcdb7af76a744b46465aa1010e746a5233125575c55e2df51ab6316a6e1b80b"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -3663,6 +3663,16 @@ name = "seahash"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c107b6f4780854c8b126e228ea8869f4d7b71260f962fefb57b996b8959ba6b"
+
+[[package]]
+name = "secrecy"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
+dependencies = [
+ "serde",
+ "zeroize",
+]
 
 [[package]]
 name = "security-framework"
@@ -5107,6 +5117,7 @@ dependencies = [
  "rand 0.9.2",
  "reqwest",
  "sea-orm",
+ "secrecy",
  "serde",
  "serde_json",
  "serde_with",

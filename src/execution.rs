@@ -17,7 +17,8 @@ pub enum StartRequest {
     Name,
     IsActive,
     ExitCode,
-    UserData
+    UserData,
+    Welcome
 }
 
 pub fn get_system_time() -> Time {

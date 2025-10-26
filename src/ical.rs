@@ -202,18 +202,18 @@ pub struct PreviousShiftInformation {
     pub previous_non_relevant_shifts: Vec<Shift>,
 }
 
-pub fn get_ical_path() -> GenResult<PathBuf> {
+pub fn get_ical_path() -> PathBuf {
     let (_user, properties) = get_data();
     let mut ical_path = PathBuf::new();
     ical_path.push(&properties.calendar_target);
     ical_path.push(create_ical_filename());
-    Ok(ical_path)
+    ical_path
 }
 
 pub fn get_previous_shifts() -> GenResult<Option<PreviousShiftInformation>> {
     let relevant_events_exist = Path::new(RELEVANT_EVENTS_PATH).exists();
     let non_relevant_events_exist = Path::new(NON_RELEVANT_EVENTS_PATH).exists();
-    let main_ical_path = get_ical_path()?;
+    let main_ical_path = get_ical_path();
     if is_partial_calendar_regeneration_needed()?.is_none_or(|needed| needed)
         || !(relevant_events_exist && non_relevant_events_exist)
     {
