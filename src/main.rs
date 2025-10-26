@@ -180,7 +180,9 @@ async fn spawn_webcom_instance(
         RefCell::new(Some(user)),
         GENERAL_PROPERTIES.scope(
             RefCell::new(Some(properties)),
-            webcom_instance(start_request),
+            NAME.scope(RefCell::new(None),
+                webcom_instance(start_request),
+            ),
         ),
     )));
     true
@@ -221,7 +223,7 @@ async fn user_instance(
             )),
             StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
             StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
-            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!("{:#?}",email::send_welcome_mail(&get_ical_path(), true)))),
+            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!("{:?}",email::send_welcome_mail(&get_ical_path(), true)))),
             _ => {
                 spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await;
                 None

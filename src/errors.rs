@@ -3,7 +3,7 @@ use std::{
     fs::write,
     hash::{DefaultHasher, Hash, Hasher},
 };
-
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use thirtyfour::{By, WebDriver};
 use thiserror::Error;
@@ -127,7 +127,7 @@ impl IncorrectCredentialsCount {
         let (user, _properties) = get_data();
         let current_password = user.password.clone();
         let mut hasher = DefaultHasher::new();
-        current_password.hash(&mut hasher);
+        current_password.0.expose_secret().hash(&mut hasher);
         Ok(hasher.finish())
     }
 

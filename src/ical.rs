@@ -5,10 +5,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use crate::{
-    FailureType, GenResult, Shift, ShiftState, create_ical_filename, create_shift_link, get_data,
-    get_set_name,
-};
+use crate::{FailureType, GenResult, Shift, ShiftState, create_ical_filename, create_shift_link, get_data, get_set_name, create_path};
 use crate::{email::TIME_DESCRIPTION, errors::ResultLog};
 use chrono::{Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use icalendar::{
@@ -34,9 +31,9 @@ impl ToNaive for time::Date {
 // Add W if it is wanted to resend the welcome mail
 pub const CALENDAR_VERSION: &str = "4";
 
-const PREVIOUS_EXECUTION_DATE_PATH: &str = "./kuma/previous_execution_date";
-pub const NON_RELEVANT_EVENTS_PATH: &str = "./kuma/non_relevant_events";
-pub const RELEVANT_EVENTS_PATH: &str = "./kuma/relevant_events";
+const PREVIOUS_EXECUTION_DATE_PATH: &str = "previous_execution_date.json";
+pub const NON_RELEVANT_EVENTS_PATH: &str = "non_relevant_events.json";
+pub const RELEVANT_EVENTS_PATH: &str = "relevant_events.json";
 
 #[derive(Debug, Error, Clone, PartialEq)]
 enum CalendarVersionError {
@@ -130,7 +127,7 @@ fn is_partial_calendar_regeneration_needed() -> GenResult<Option<bool>> {
         }
     };
     let previous_execution_date = match || -> GenResult<Date> {
-        let previous_execution_date_str = read_to_string(PREVIOUS_EXECUTION_DATE_PATH)?;
+        let previous_execution_date_str = read_to_string(create_path(PREVIOUS_EXECUTION_DATE_PATH))?;
         Ok(from_str::<Date>(&previous_execution_date_str)?)
     }() {
         Ok(date) => date,
@@ -140,7 +137,7 @@ fn is_partial_calendar_regeneration_needed() -> GenResult<Option<bool>> {
                 err.to_string()
             );
             _ = write(
-                PREVIOUS_EXECUTION_DATE_PATH,
+                create_path(PREVIOUS_EXECUTION_DATE_PATH),
                 serde_json::to_string(&current_date)?.as_bytes(),
             );
             return Ok(None);
@@ -148,7 +145,7 @@ fn is_partial_calendar_regeneration_needed() -> GenResult<Option<bool>> {
     };
     debug!("Current date: {current_date}");
     _ = write(
-        PREVIOUS_EXECUTION_DATE_PATH,
+        create_path(PREVIOUS_EXECUTION_DATE_PATH),
         serde_json::to_string(&current_date)?.as_bytes(),
     );
     if previous_execution_date != current_date {
@@ -184,12 +181,12 @@ fn event_to_shift(events: Vec<Event>) -> Vec<Shift> {
 pub fn save_partial_shift_files(shifts: &Vec<Shift>) -> GenResult<()> {
     let (relevant_shifts, non_relevant_shifts) = split_relevant_shifts(shifts.clone());
     write(
-        RELEVANT_EVENTS_PATH,
+        create_path(RELEVANT_EVENTS_PATH),
         serde_json::to_string_pretty(&relevant_shifts)?,
     )
     .warn("Saving relevant shifts");
     write(
-        NON_RELEVANT_EVENTS_PATH,
+        create_path(NON_RELEVANT_EVENTS_PATH),
         serde_json::to_string_pretty(&non_relevant_shifts)?,
     )
     .warn("Saving non-relevant shifts");
@@ -211,8 +208,8 @@ pub fn get_ical_path() -> PathBuf {
 }
 
 pub fn get_previous_shifts() -> GenResult<Option<PreviousShiftInformation>> {
-    let relevant_events_exist = Path::new(RELEVANT_EVENTS_PATH).exists();
-    let non_relevant_events_exist = Path::new(NON_RELEVANT_EVENTS_PATH).exists();
+    let relevant_events_exist = create_path(RELEVANT_EVENTS_PATH).exists();
+    let non_relevant_events_exist = create_path(NON_RELEVANT_EVENTS_PATH).exists();
     let main_ical_path = get_ical_path();
     if is_partial_calendar_regeneration_needed()?.is_none_or(|needed| needed)
         || !(relevant_events_exist && non_relevant_events_exist)
@@ -258,8 +255,8 @@ pub fn get_previous_shifts() -> GenResult<Option<PreviousShiftInformation>> {
         }))
     } else {
         info!("Calendar regeneration NOT needed");
-        let relevant_shift_str = read_to_string(RELEVANT_EVENTS_PATH)?;
-        let non_relevant_shifts_str = read_to_string(NON_RELEVANT_EVENTS_PATH)?;
+        let relevant_shift_str = read_to_string(create_path(RELEVANT_EVENTS_PATH))?;
+        let non_relevant_shifts_str = read_to_string(create_path(NON_RELEVANT_EVENTS_PATH))?;
         let previous_relevant_shifts: Vec<Shift> = serde_json::from_str(&relevant_shift_str)?;
         // All relevant shifts MUST FIRST BE MARKED AS DELETED for deleted shift detection to work
         let previous_relevant_shifts = previous_relevant_shifts
