@@ -27,6 +27,8 @@ use crate::watchdog::{InstanceMap, RequestResponse};
 use crate::webcom::webcom_instance;
 use dotenvy::dotenv_override;
 use dotenvy::var;
+use migration::Migrator;
+use migration::MigratorTrait;
 use sea_orm::Database;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -282,11 +284,17 @@ async fn main() -> GenResult<()> {
         .await
         .expect("Could not connect to database");
 
+    // Apply all pending migrations
+    Migrator::up(&db, None).await?;
+
     let (watchdog_tx, mut watchdog_rx) = channel(1);
     _ = watchdog_tx.try_send("".to_owned());
+
     let instances: Arc<RwLock<InstanceMap>> = Arc::new(RwLock::new(HashMap::new()));
+
     tokio::spawn(execution_timer(instances.clone()));
-    tokio::spawn(api(instances.clone(), watchdog_tx));
+    tokio::spawn(api(instances.clone(), watchdog_tx, db.clone()));
+
     watchdog(instances.clone(), &db, &mut watchdog_rx).await?;
 
     info!("Stopping {APPLICATION_NAME}");

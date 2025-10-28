@@ -1,10 +1,16 @@
 use dotenvy::var;
-use thirtyfour::{error::WebDriverError, DesiredCapabilities, WebDriver};
+use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};
 
-use crate::{email::send_errors, errors::{FailureType, ResultLog}, health::{send_heartbeat, ApplicationLogbook}, get_set_name, GenResult};
+use crate::{
+    GenResult,
+    email::send_errors,
+    errors::{FailureType, ResultLog},
+    get_set_name,
+    health::{ApplicationLogbook, send_heartbeat},
+};
 
 pub async fn initiate_webdriver() -> GenResult<WebDriver> {
-    let gecko_ip = var("GECKO_IP")?;
+    let gecko_ip = var("SELENIUM_URL")?;
     let caps = DesiredCapabilities::firefox();
     let driver = WebDriver::new(format!("http://{}", gecko_ip), caps).await?;
     Ok(driver)
@@ -32,8 +38,7 @@ pub async fn wait_until_loaded(driver: &WebDriver) -> GenResult<()> {
     let timeout_duration = std::time::Duration::from_secs(30);
     let _ = tokio::time::timeout(timeout_duration, async {
         loop {
-            let ready_state =
-                driver.execute("return document.readyState", vec![]).await?;
+            let ready_state = driver.execute("return document.readyState", vec![]).await?;
             let current_state = format!("{:?}", ready_state.json());
             if current_state == "String(\"complete\")" && started_loading {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;

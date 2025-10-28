@@ -1,14 +1,14 @@
 name: MijnBussie
 services:
   mijn-bussie:
-    image: docker.io/library/webcom_ical
+    image: docker.io/library/mijn_bussie
     user: root
     volumes:
-      - .env:/usr/src/webcom_ical/.env
-      - ${SAVE_TARGET}:/usr/src/webcom_ical/calendar/
-      - ./data/:/usr/src/webcom_ical/data/
+      - .env:/usr/src/mijn_bussie/.env
+      - ${SAVE_TARGET}:/usr/src/mijn_bussie/calendar/
+      - ./data/:/usr/src/mijn_bussie/data/
     environment:
-      - RUST_LOG=webcom_ical=info
+      - RUST_LOG=mijn_bussie=info
     ports:
       - ${API_PORT}:3000
     restart: unless-stopped
