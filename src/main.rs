@@ -6,10 +6,6 @@ const FALLBACK_URL: [&str; 2] = [
 ];
 const APPLICATION_NAME: &str = "Mijn Bussie";
 
-extern crate pretty_env_logger;
-#[macro_use]
-extern crate log;
-
 use crate::api::api;
 use crate::errors::FailureType;
 use crate::errors::ResultLog;
@@ -44,6 +40,15 @@ use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::task_local;
+use tracing::level_filters::LevelFilter;
+use tracing::*;
+use tracing::instrument::WithSubscriber;
+use tracing_appender::non_blocking;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Layer;
+use tracing_subscriber::Registry;
+use tracing_subscriber::fmt;
+use tracing_subscriber::layer::SubscriberExt;
 
 mod api;
 mod email;
@@ -189,13 +194,16 @@ async fn spawn_webcom_instance(
         *last_exit_code = thread.await.unwrap_or_default();
     }
     let (user, properties) = get_data();
-    *thread_store = Some(tokio::spawn(USER_PROPERTIES.scope(
-        RefCell::new(Some(user)),
-        GENERAL_PROPERTIES.scope(
-            RefCell::new(Some(properties)),
-            NAME.scope(RefCell::new(None), webcom_instance(start_request)),
-        ),
-    )));
+    *thread_store = Some(tokio::spawn(
+        USER_PROPERTIES
+            .scope(
+                RefCell::new(Some(user)),
+                GENERAL_PROPERTIES.scope(
+                    RefCell::new(Some(properties)),
+                    NAME.scope(RefCell::new(None), webcom_instance(start_request)),
+                ),
+            ).with_current_subscriber()
+    ));
     true
 }
 
@@ -214,43 +222,56 @@ async fn user_instance(
     sender: Sender<RequestResponse>,
     instance: UserInstanceData,
 ) {
-    let mut receiver = receiver;
-    let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
-    let mut last_exit_code = FailureType::default();
-    loop {
-        debug!("Waiting for notification");
-        let start_request = receiver.recv().await.expect("Notification channel closed");
+    let (_user, _properties) = set_data(&instance).await;
+    let tracer = tracing_appender::rolling::daily(create_path("logs"), "log");
 
-        let (user, _properties) = set_data(&instance).await;
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::WARN.into())
+        .from_env().unwrap();
 
-        let response = match start_request {
-            StartRequest::Logbook => Some(RequestResponse::Logbook(ApplicationLogbook::load())),
-            StartRequest::Name => Some(RequestResponse::Name(get_set_name(None))),
-            StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(
-                &webcom_thread,
-            ))),
-            StartRequest::Api => Some(RequestResponse::Active(
-                spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await,
-            )),
-            StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
-            StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
-            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!(
-                "{:?}",
-                email::send_welcome_mail(&get_ical_path(), true)
-            ))),
-            _ => {
-                spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await;
-                None
+    let (non_blocking, _guard) = non_blocking::NonBlocking::new(tracer);
+
+    let subscriber = tracing_subscriber::fmt().with_ansi(false).with_writer(non_blocking).with_env_filter(filter).finish();
+    async {
+        info!("starting");
+        let mut receiver = receiver;
+        let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
+        let mut last_exit_code = FailureType::default();
+        loop {
+            debug!("Waiting for notification");
+            let start_request = receiver.recv().await.expect("Notification channel closed");
+
+            let (user, _properties) = set_data(&instance).await;
+
+            let response = match start_request {
+                StartRequest::Logbook => Some(RequestResponse::Logbook(ApplicationLogbook::load())),
+                StartRequest::Name => Some(RequestResponse::Name(get_set_name(None))),
+                StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(
+                    &webcom_thread,
+                ))),
+                StartRequest::Api => Some(RequestResponse::Active(
+                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).with_current_subscriber().await,
+                )),
+                StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
+                StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
+                StartRequest::Welcome => Some(RequestResponse::GenResponse(format!(
+                    "{:?}",
+                    email::send_welcome_mail(&get_ical_path(), true)
+                ))),
+                _ => {
+                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).with_current_subscriber().await;
+                    None
+                }
+            };
+            if let Some(response) = response {
+                sender.try_send(response).info("Send response");
             }
-        };
-        if let Some(response) = response {
-            sender.try_send(response).info("Send response");
-        }
 
-        if start_request == StartRequest::Single {
-            break;
+            if start_request == StartRequest::Single {
+                break;
+            }
         }
-    }
+    }.with_subscriber(subscriber).await;
 }
 
 fn check_env_permissions() -> GenResult<()> {
@@ -271,7 +292,17 @@ fn check_env_permissions() -> GenResult<()> {
 
 #[tokio::main]
 async fn main() -> GenResult<()> {
-    pretty_env_logger::init();
+    let filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env()?;
+
+    let stdout_layer = fmt::layer()
+        .with_writer(std::io::stdout)
+        .with_filter(filter);
+
+    let global_subscriber = Registry::default().with(stdout_layer);
+    tracing::subscriber::set_global_default(global_subscriber)
+        .expect("Failed to set global subscriber");
     check_env_permissions().unwrap();
 
     dotenv_override()?;

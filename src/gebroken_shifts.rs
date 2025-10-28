@@ -7,7 +7,7 @@ use crate::{
 };
 use thirtyfour::{WebDriver, WebElement, error::WebDriverResult, prelude::*};
 use time::{Duration, Time};
-
+use tracing::*;
 /*
 Main function for loading broken shifts
 First visits the web page

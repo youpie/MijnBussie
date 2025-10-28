@@ -1,11 +1,7 @@
-use std::{
-    collections::HashMap,
-    fs::{self, read_to_string, write},
-    path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+use crate::{
+    FailureType, GenResult, Shift, ShiftState, create_ical_filename, create_path,
+    create_shift_link, get_data, get_set_name,
 };
-
-use crate::{FailureType, GenResult, Shift, ShiftState, create_ical_filename, create_shift_link, get_data, get_set_name, create_path};
 use crate::{email::TIME_DESCRIPTION, errors::ResultLog};
 use chrono::{Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use icalendar::{
@@ -13,8 +9,15 @@ use icalendar::{
     parser::{read_calendar, unfold},
 };
 use serde_json::from_str;
+use std::{
+    collections::HashMap,
+    fs::{self, read_to_string, write},
+    path::{Path, PathBuf},
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use thiserror::Error;
 use time::{Date, OffsetDateTime, Time};
+use tracing::*;
 
 trait ToNaive {
     fn to_naive(&self) -> Option<NaiveDate>;
@@ -127,7 +130,8 @@ fn is_partial_calendar_regeneration_needed() -> GenResult<Option<bool>> {
         }
     };
     let previous_execution_date = match || -> GenResult<Date> {
-        let previous_execution_date_str = read_to_string(create_path(PREVIOUS_EXECUTION_DATE_PATH))?;
+        let previous_execution_date_str =
+            read_to_string(create_path(PREVIOUS_EXECUTION_DATE_PATH))?;
         Ok(from_str::<Date>(&previous_execution_date_str)?)
     }() {
         Ok(date) => date,

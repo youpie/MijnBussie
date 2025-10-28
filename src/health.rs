@@ -4,9 +4,6 @@ use std::{
     time::SystemTime,
 };
 
-use serde::{Deserialize, Serialize};
-use url::Url;
-
 use crate::{
     FailureType, GenResult, create_path,
     errors::SignInFailure,
@@ -14,6 +11,9 @@ use crate::{
     ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
     shift::Shift,
 };
+use serde::{Deserialize, Serialize};
+use tracing::*;
+use url::Url;
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ApplicationLogbook {

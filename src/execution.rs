@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use crate::{GenResult, email::TIME_DESCRIPTION, variables::UserData, watchdog::InstanceMap};
 use serde::Serialize;
 use time::{Duration, OffsetDateTime, Time};
 use tokio::{sync::RwLock, time::sleep};
-
-use crate::{GenResult, email::TIME_DESCRIPTION, variables::UserData, watchdog::InstanceMap};
+use tracing::*;
 
 #[allow(dead_code)]
 #[derive(PartialEq, Serialize, Copy, Clone)]
@@ -18,13 +18,15 @@ pub enum StartRequest {
     IsActive,
     ExitCode,
     UserData,
-    Welcome
+    Welcome,
 }
 
 pub fn get_system_time() -> Time {
-    OffsetDateTime::now_local()
+    let time = OffsetDateTime::now_local()
         .unwrap_or(OffsetDateTime::now_utc())
-        .time()
+        .time();
+    debug!("system time: {:?}", time);
+    time
 }
 
 #[allow(dead_code, unused_variables)]
@@ -81,7 +83,10 @@ pub async fn execution_timer(instances: Arc<RwLock<InstanceMap>>) -> GenResult<(
                     false,
                 )
                 .await;
-                debug!("Executing user {user_name} at {} next", instance.1.execution_time)
+                debug!(
+                    "Executing user {user_name} at {} next",
+                    instance.1.execution_time
+                )
             }
         }
     }

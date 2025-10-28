@@ -1,6 +1,3 @@
-use dotenvy::var;
-use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};
-
 use crate::{
     GenResult,
     email::send_errors,
@@ -8,6 +5,9 @@ use crate::{
     get_set_name,
     health::{ApplicationLogbook, send_heartbeat},
 };
+use dotenvy::var;
+use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};
+use tracing::*;
 
 pub async fn initiate_webdriver() -> GenResult<WebDriver> {
     let gecko_ip = var("SELENIUM_URL")?;

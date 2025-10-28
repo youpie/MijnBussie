@@ -5,6 +5,14 @@ use std::{
     time::Duration,
 };
 
+use crate::errors::FailureType;
+use crate::health::ApplicationLogbook;
+use crate::{
+    GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
+    execution::{StartRequest, calculate_next_execution_time, get_system_time},
+    kuma, user_instance,
+    variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
+};
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use time::Time;
@@ -16,15 +24,7 @@ use tokio::{
     task::JoinHandle,
     time::timeout,
 };
-
-use crate::errors::FailureType;
-use crate::health::ApplicationLogbook;
-use crate::{
-    GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
-    execution::{StartRequest, calculate_next_execution_time, get_system_time},
-    kuma, user_instance,
-    variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
-};
+use tracing::*;
 
 #[derive(Debug, PartialEq)]
 enum InstanceState {
@@ -56,16 +56,19 @@ impl UserInstance {
         let request_channel = channel(1);
         let response_channel = channel(1);
         let data_clone = user_data.clone();
-        let thread = tokio::spawn(USER_PROPERTIES.scope(
-            RefCell::new(None),
-            GENERAL_PROPERTIES.scope(
-                RefCell::new(None),
-                NAME.scope(
+        let thread = tokio::spawn(
+            USER_PROPERTIES
+                .scope(
                     RefCell::new(None),
-                    user_instance(request_channel.1, response_channel.0, data_clone),
-                ),
-            ),
-        ));
+                    GENERAL_PROPERTIES.scope(
+                        RefCell::new(None),
+                        NAME.scope(
+                            RefCell::new(None),
+                            user_instance(request_channel.1, response_channel.0, data_clone),
+                        ),
+                    ),
+                )
+        );
         let execution_time = calculate_next_execution_time(user_data.user_data.clone(), true).await;
         info!(
             "Executing user {} in {} minutes",

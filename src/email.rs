@@ -1,5 +1,6 @@
 use crate::errors::IncorrectCredentialsCount;
-use crate::{get_data, GenError, GenResult, ShiftState, APPLICATION_NAME};
+use crate::{APPLICATION_NAME, GenError, GenResult, ShiftState, get_data};
+use crate::{Shift, SignInFailure, create_ical_filename, create_shift_link, get_set_name};
 use lettre::{
     Message, SmtpTransport, Transport, message::header::ContentType,
     transport::smtp::authentication::Credentials,
@@ -8,9 +9,8 @@ use std::{collections::HashMap, fs, path::PathBuf};
 use strfmt::strfmt;
 use thirtyfour::error::{WebDriverErrorInfo, WebDriverResult};
 use time::{Date, macros::format_description};
+use tracing::*;
 use url::Url;
-
-use crate::{Shift, SignInFailure, create_ical_filename, create_shift_link, get_set_name};
 
 const ERROR_VALUE: &str = "HIER HOORT WAT ANDERS DAN DEZE TEKST TE STAAN, CONFIGURATIE INCORRECT";
 const SENDER_NAME: &str = "Peter";

@@ -1,16 +1,16 @@
+use crate::email::{COLOR_GREEN, COLOR_RED};
+use crate::errors::OptionResult;
+use crate::variables::{GeneralProperties, UserData};
+use crate::watchdog::InstanceMap;
+use crate::{APPLICATION_NAME, GenResult};
 use kuma_client::monitor::{MonitorGroup, MonitorType};
 use kuma_client::{Client, monitor, notification};
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::str::FromStr;
 use strfmt::strfmt;
+use tracing::*;
 use url::Url;
-
-use crate::email::{COLOR_GREEN, COLOR_RED};
-use crate::errors::OptionResult;
-use crate::variables::{GeneralProperties, UserData};
-use crate::watchdog::InstanceMap;
-use crate::{APPLICATION_NAME, GenResult};
 
 pub async fn manage_users(
     instances_to_create: &Vec<String>,

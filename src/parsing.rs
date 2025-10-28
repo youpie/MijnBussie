@@ -1,21 +1,21 @@
 use crate::email::DATE_DESCRIPTION;
-use crate::errors::{check_if_webcom_unavailable, check_sign_in_error, OptionResult};
+use crate::errors::{OptionResult, check_if_webcom_unavailable, check_sign_in_error};
 use crate::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
 use crate::health::ApplicationLogbook;
 use crate::webdriver::wait_until_loaded;
-use crate::{
-    FailureType, GenResult, Shift, get_set_name,
-};
+use crate::{FailureType, GenResult, Shift, get_set_name};
 use async_recursion::async_recursion;
 use thirtyfour::prelude::ElementQueryable;
 use thirtyfour::{By, WebDriver};
 use time::{Date, Month};
+use tracing::*;
+use tracing::*;
 
 /*
 Checks all supplied WebElements, it checks if the day contains the text "Dienstuur"  and if so, adds it to a Vec of valid shifts in the calendar
 Does not search itself for elements
 */
-async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<(Vec<Shift>,u64)> {
+async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<(Vec<Shift>, u64)> {
     let mut temp_emlements: Vec<Shift> = vec![];
     let mut failed_shifts = 0;
     let elements = driver
@@ -26,9 +26,7 @@ async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<
         let text = match element.attr("data-original-title").await? {
             Some(x) => x,
             None => {
-                return Err(
-                    "no elements in rooster".into(),
-                );
+                return Err("no elements in rooster".into());
             }
         };
         if !text.is_empty() && text.contains("Dienstduur") {
@@ -46,11 +44,14 @@ async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<
                     debug!("Found Shift {}", &shift.number);
                 }
                 Err(error) => {
-                    error!("FAILED TO CREATE SHIFT!\nDATE: {}\nERROR: {}", date.format(DATE_DESCRIPTION)?,error.to_string());
-                    failed_shifts +=1;
+                    error!(
+                        "FAILED TO CREATE SHIFT!\nDATE: {}\nERROR: {}",
+                        date.format(DATE_DESCRIPTION)?,
+                        error.to_string()
+                    );
+                    failed_shifts += 1;
                 }
             }
-            
         }
     }
     Ok((temp_emlements, failed_shifts))
@@ -101,7 +102,10 @@ pub async fn load_previous_month_shifts(
 Just presses the next button in webcom twice to load the next month.
 Only works correctly if the previous month function has been ran before
 */
-pub async fn load_next_month_shifts(driver: &WebDriver, logbook: &mut ApplicationLogbook) -> GenResult<Vec<Shift>> {
+pub async fn load_next_month_shifts(
+    driver: &WebDriver,
+    logbook: &mut ApplicationLogbook,
+) -> GenResult<Vec<Shift>> {
     debug!("Loading Next Month..");
     let now = time::OffsetDateTime::now_utc();
     let today = now.date();
@@ -122,7 +126,10 @@ pub async fn load_next_month_shifts(driver: &WebDriver, logbook: &mut Applicatio
     Ok(shifts.0)
 }
 
-pub async fn load_current_month_shifts(driver: &WebDriver, logbook: &mut ApplicationLogbook) -> GenResult<Vec<Shift>> {
+pub async fn load_current_month_shifts(
+    driver: &WebDriver,
+    logbook: &mut ApplicationLogbook,
+) -> GenResult<Vec<Shift>> {
     let now = time::OffsetDateTime::now_utc();
     let today = now.date();
     let shifts = get_elements(&driver, today.month(), today.year()).await?;

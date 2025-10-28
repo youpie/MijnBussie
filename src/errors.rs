@@ -1,14 +1,14 @@
+use crate::{GenResult, create_path, email, get_data};
+use secrecy::ExposeSecret;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
     fs::write,
     hash::{DefaultHasher, Hash, Hasher},
 };
-use secrecy::ExposeSecret;
-use serde::{Deserialize, Serialize};
 use thirtyfour::{By, WebDriver};
 use thiserror::Error;
-
-use crate::{GenResult, create_path, email, get_data};
+use tracing::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Error, Default)]
 pub enum SignInFailure {
