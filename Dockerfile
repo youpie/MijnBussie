@@ -10,3 +10,5 @@ COPY migration ./migration
 COPY ./templates /usr/src/mijn_bussie/templates
 
 RUN cargo install --path .
+
+CMD ["mijn_bussie"]
