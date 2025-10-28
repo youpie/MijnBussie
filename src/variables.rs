@@ -7,12 +7,12 @@ use entity::{
     donation_text, email_properties, general_properties_db, kuma_properties, user_data,
     user_properties,
 };
-use sea_orm::{sea_query, QueryResult, RelationTrait, TryGetable, Value};
 use sea_orm::{ColumnTrait, QuerySelect};
 use sea_orm::{DatabaseConnection, DerivePartialModel, EntityTrait, QueryFilter};
+use sea_orm::{QueryResult, RelationTrait, TryGetable, Value, sea_query};
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Serialize, Serializer};
 use tokio::sync::RwLock;
-use secrecy::{ExposeSecret, SecretString, SerializableSecret};
 
 use crate::GenResult;
 
@@ -26,7 +26,10 @@ pub struct UserInstanceData {
 
 impl UserInstanceData {
     pub async fn get_data_local(&self) -> (UserData, GeneralProperties) {
-        (self.user_data.read().await.clone(), self.general_settings.read().await.clone())
+        (
+            self.user_data.read().await.clone(),
+            self.general_settings.read().await.clone(),
+        )
     }
 
     pub async fn load_user(
@@ -142,7 +145,6 @@ pub struct KumaProperties {
     pub use_ssl: bool,
 }
 
-
 #[derive(Clone, Debug)]
 pub struct Secret(pub SecretString);
 
@@ -156,7 +158,10 @@ impl From<Secret> for Value {
 
 // 2) sea_orm::TryGetable for Secret (how to read from QueryResult)
 impl TryGetable for Secret {
-    fn try_get_by<I: sea_orm::ColIdx>(res: &QueryResult, idx: I) -> Result<Self, sea_orm::TryGetError> {
+    fn try_get_by<I: sea_orm::ColIdx>(
+        res: &QueryResult,
+        idx: I,
+    ) -> Result<Self, sea_orm::TryGetError> {
         // delegate to String's TryGetable then wrap
         <String as TryGetable>::try_get_by(res, idx).map(|s| Secret(SecretString::new(s.into())))
     }
@@ -264,13 +269,16 @@ impl UserData {
     fn decrypt_password(&mut self) -> GenResult<()> {
         let secret_string = var("PASSWORD_SECRET")?;
         let secret = secret_string.as_bytes();
-        self.password = Secret(SecretString::new(String::from_utf8(
-            simplestcrypt::deserialize_and_decrypt(
-                secret,
-                &BASE64_STANDARD_NO_PAD.decode(self.password.0.expose_secret())?,
-            )
-            .unwrap(),
-        )?.into()));
+        self.password = Secret(SecretString::new(
+            String::from_utf8(
+                simplestcrypt::deserialize_and_decrypt(
+                    secret,
+                    &BASE64_STANDARD_NO_PAD.decode(self.password.0.expose_secret())?,
+                )
+                .unwrap(),
+            )?
+            .into(),
+        ));
         Ok(())
     }
 }

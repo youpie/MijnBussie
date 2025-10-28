@@ -1,11 +1,57 @@
-name: webcom_${USERNAME}
+name: MijnBussie
 services:
-  webcom_ical:
+  mijn-bussie:
     image: docker.io/library/webcom_ical
+    user: root
     volumes:
       - .env:/usr/src/webcom_ical/.env
-      - {{save_target}}:/usr/src/webcom_ical/calendar/
-      - ./kuma/:/usr/src/webcom_ical/kuma/
+      - ${SAVE_TARGET}:/usr/src/webcom_ical/calendar/
+      - ./data/:/usr/src/webcom_ical/data/
     environment:
-      - RUST_LOG=warn
-    restart: on-failure
+      - RUST_LOG=webcom_ical=info
+    ports:
+      - ${API_PORT}:3000
+    restart: unless-stopped
+    networks:
+      - MijnBussie
+    depends_on:
+      - db
+      - selenium-hub
+      - node-docker
+
+  db:
+    image: postgres
+    restart: unless-stopped
+    user: root
+    # set shared memory limit when using docker compose
+    shm_size: 128mb
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+    ports:
+      # WARNING: Exposes database
+      - 5432:5432
+    volumes:
+      - ./pg_data:/var/lib/postgresql
+
+  selenium-hub:
+    image: selenium/hub:latest
+    container_name: selenium-hub
+    networks:
+      - MijnBussie
+
+  node-docker:
+    image: selenium/node-docker:latest
+    user: root
+    volumes:
+      - ./assets:/opt/selenium/assets:z
+      - ./config.toml:/opt/selenium/docker.toml:z
+      - /var/run/docker.sock:/var/run/docker.sock:z
+    environment:
+      - SE_NODE_DOCKER_CONFIG_FILENAME=docker.toml
+      - "SE_EVENT_BUS_HOST=selenium-hub"
+    networks:
+      - MijnBussie
+    restart: unless-stopped
+networks:
+  MijnBussie:

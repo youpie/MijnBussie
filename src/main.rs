@@ -30,6 +30,8 @@ use dotenvy::var;
 use sea_orm::Database;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use time::macros::format_description;
@@ -115,7 +117,11 @@ fn create_ical_filename() -> String {
     }
 }
 
-pub fn create_path_local(user: &UserData, properties: &GeneralProperties,filename: &str) -> PathBuf {
+pub fn create_path_local(
+    user: &UserData,
+    properties: &GeneralProperties,
+    filename: &str,
+) -> PathBuf {
     let mut path = PathBuf::from(&properties.file_target);
     path.push(&user.user_name);
     _ = fs::create_dir_all(&path);
@@ -133,10 +139,16 @@ fn get_set_name(set_new_name: Option<String>) -> String {
     get_set_name_local(user.as_ref(), properties.as_ref(), set_new_name)
 }
 
-pub fn get_set_name_local(user: &UserData, properties: &GeneralProperties, set_new_name: Option<String>) -> String {
-    let path = create_path_local(user, properties,"name");
+pub fn get_set_name_local(
+    user: &UserData,
+    properties: &GeneralProperties,
+    set_new_name: Option<String>,
+) -> String {
+    let path = create_path_local(user, properties, "name");
     // Just return constant name if already set
-    if let Some(const_name) = &*NAME.get().borrow() && set_new_name.is_none() {
+    if let Some(const_name) = &*NAME.get().borrow()
+        && set_new_name.is_none()
+    {
         return const_name.to_owned();
     }
     let mut name = std::fs::read_to_string(&path)
@@ -180,9 +192,7 @@ async fn spawn_webcom_instance(
         RefCell::new(Some(user)),
         GENERAL_PROPERTIES.scope(
             RefCell::new(Some(properties)),
-            NAME.scope(RefCell::new(None),
-                webcom_instance(start_request),
-            ),
+            NAME.scope(RefCell::new(None), webcom_instance(start_request)),
         ),
     )));
     true
@@ -223,7 +233,10 @@ async fn user_instance(
             )),
             StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
             StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
-            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!("{:?}",email::send_welcome_mail(&get_ical_path(), true)))),
+            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!(
+                "{:?}",
+                email::send_welcome_mail(&get_ical_path(), true)
+            ))),
             _ => {
                 spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).await;
                 None
@@ -239,10 +252,28 @@ async fn user_instance(
     }
 }
 
+fn check_env_permissions() -> GenResult<()> {
+    let uid = std::fs::metadata("/proc/self").map(|m| m.uid())?;
+    let permissions_target = 0o100600;
+    let metadata = std::fs::File::open("./.env")?.metadata()?;
+    let file_mode = metadata.permissions().mode();
+    let file_owner = metadata.uid();
+    if file_mode == permissions_target && file_owner == uid {
+        Ok(())
+    } else {
+        Err(format!(
+            "INCORRECT PERMISSIONS FOR ENV. Should be {permissions_target:o}, is {file_mode:o}. File owner should be {uid}, is {file_owner}"
+        )
+        .into())
+    }
+}
+
 #[tokio::main]
 async fn main() -> GenResult<()> {
-    dotenv_override().ok();
     pretty_env_logger::init();
+    check_env_permissions().unwrap();
+
+    dotenv_override()?;
     info!("Starting {APPLICATION_NAME}");
 
     // let args = Args::parse();

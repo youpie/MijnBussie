@@ -2344,6 +2344,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "mijn_bussie"
+version = "0.3.0"
+dependencies = [
+ "async-recursion",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "default",
+ "dotenvy",
+ "entity",
+ "icalendar",
+ "ipipe",
+ "kuma-client",
+ "lettre",
+ "log",
+ "migration",
+ "pretty_env_logger",
+ "rand 0.9.2",
+ "reqwest",
+ "sea-orm",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "simplestcrypt",
+ "strfmt",
+ "strum",
+ "strum_macros",
+ "thirtyfour",
+ "thiserror 2.0.16",
+ "time",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5094,42 +5130,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webcom_ical"
-version = "0.3.0"
-dependencies = [
- "async-recursion",
- "axum",
- "base64 0.22.1",
- "chrono",
- "default",
- "dotenvy",
- "entity",
- "icalendar",
- "ipipe",
- "kuma-client",
- "lettre",
- "log",
- "migration",
- "pretty_env_logger",
- "rand 0.9.2",
- "reqwest",
- "sea-orm",
- "secrecy",
- "serde",
- "serde_json",
- "serde_with",
- "simplestcrypt",
- "strfmt",
- "strum",
- "strum_macros",
- "thirtyfour",
- "thiserror 2.0.16",
- "time",
- "tokio",
- "url",
 ]
 
 [[package]]
