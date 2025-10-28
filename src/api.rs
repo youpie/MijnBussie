@@ -9,6 +9,7 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use sea_orm::DatabaseConnection;
+use serde::Serialize;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,7 +25,7 @@ pub struct ServerConfig {
     database: DatabaseConnection,
 }
 
-#[derive(Clone, EnumString, Debug, PartialEq)]
+#[derive(Clone, EnumString, Debug, PartialEq, Serialize)]
 enum Action {
     #[strum(ascii_case_insensitive)]
     Logbook,

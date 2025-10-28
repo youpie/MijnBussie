@@ -37,7 +37,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use time::macros::format_description;
-use tokio::fs;
 use tokio::fs::write;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
@@ -126,7 +125,7 @@ pub fn create_path_local(
 ) -> PathBuf {
     let mut path = PathBuf::from(&properties.file_target);
     path.push(&user.user_name);
-    _ = fs::create_dir_all(&path);
+    std::fs::create_dir_all(&path).warn("Creating dirs");
     path.push(filename);
     path
 }
