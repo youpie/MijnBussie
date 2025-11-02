@@ -1,3 +1,4 @@
+use crate::database::secret::Secret;
 use crate::errors::{OptionResult, check_if_webcom_unavailable, check_sign_in_error};
 use crate::health::ApplicationLogbook;
 use crate::webcom::email::DATE_DESCRIPTION;
@@ -5,6 +6,7 @@ use crate::webcom::gebroken_shifts::{navigate_to_subdirectory, wait_for_response
 use crate::webcom::webdriver::wait_until_loaded;
 use crate::{FailureType, GenResult, get_set_name, webcom::shift::Shift};
 use async_recursion::async_recursion;
+use secrecy::ExposeSecret;
 use thirtyfour::prelude::ElementQueryable;
 use thirtyfour::{By, WebDriver};
 use time::{Date, Month};
@@ -140,7 +142,7 @@ pub async fn load_current_month_shifts(
 Logs into webcom, has no logic for when the login fails.
 It will also find and return the first name of the user, this will fail if the login is unsuccesful
 */
-pub async fn load_calendar(driver: &WebDriver, user: &str, pass: &str) -> GenResult<()> {
+pub async fn load_calendar(driver: &WebDriver, user: Secret, pass: Secret) -> GenResult<()> {
     info!("Logging in..");
     sign_in_webcom(driver, user, pass).await?;
     info!("Loading rooster..");
@@ -148,7 +150,7 @@ pub async fn load_calendar(driver: &WebDriver, user: &str, pass: &str) -> GenRes
     Ok(())
 }
 
-async fn sign_in_webcom(driver: &WebDriver, user: &str, pass: &str) -> GenResult<()> {
+async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenResult<()> {
     let possible_error = match driver.find(By::Id("h3")).await {
         Ok(element) => Some(element.text().await.unwrap_or("GEEN TEKST".to_owned())),
         Err(_) => None,
@@ -160,11 +162,11 @@ async fn sign_in_webcom(driver: &WebDriver, user: &str, pass: &str) -> GenResult
             true => Box::new(FailureType::SignInFailed(crate::SignInFailure::WebcomDown)),
             false => Box::new(FailureType::Other(error.to_string())),
         })?;
-    username_field.send_keys(user).await?;
+    username_field.send_keys(user.0.expose_secret()).await?;
     let password_field = driver
         .find(By::Id("ctl00_cntMainBody_lgnView_lgnLogin_Password"))
         .await?;
-    password_field.send_keys(pass).await?;
+    password_field.send_keys(pass.0.expose_secret()).await?;
     driver
         .find(By::Id("ctl00_cntMainBody_lgnView_lgnLogin_LoginButton"))
         .await?

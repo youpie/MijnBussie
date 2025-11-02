@@ -1,6 +1,6 @@
+use crate::database::variables::GeneralProperties;
 use crate::errors::OptionResult;
 use crate::timer::StartRequest;
-use crate::variables::GeneralProperties;
 use crate::watchdog::{InstanceMap, RequestResponse};
 use crate::{GenResult, kuma};
 use axum::extract::{Path, State};

@@ -7,15 +7,15 @@ const FALLBACK_URL: [&str; 2] = [
 const APPLICATION_NAME: &str = "Mijn Bussie";
 
 use crate::api::route::api;
+use crate::database::variables::GeneralProperties;
+use crate::database::variables::UserData;
+use crate::database::variables::UserInstanceData;
 use crate::errors::FailureType;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
 use crate::health::ApplicationLogbook;
 use crate::timer::StartRequest;
 use crate::timer::execution_timer;
-use crate::variables::GeneralProperties;
-use crate::variables::UserData;
-use crate::variables::UserInstanceData;
 use crate::watchdog::watchdog;
 use crate::watchdog::{InstanceMap, RequestResponse};
 use crate::webcom::email;
@@ -52,11 +52,11 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
 
 mod api;
+mod database;
 mod errors;
 mod health;
 mod kuma;
 mod timer;
-mod variables;
 mod watchdog;
 mod webcom;
 

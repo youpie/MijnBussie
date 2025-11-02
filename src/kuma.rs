@@ -1,5 +1,5 @@
+use crate::database::variables::{GeneralProperties, UserData};
 use crate::errors::OptionResult;
-use crate::variables::{GeneralProperties, UserData};
 use crate::watchdog::InstanceMap;
 use crate::webcom::email::{COLOR_GREEN, COLOR_RED};
 use crate::{APPLICATION_NAME, GenResult};

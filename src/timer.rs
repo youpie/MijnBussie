@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    GenResult, variables::UserData, watchdog::InstanceMap, webcom::email::TIME_DESCRIPTION,
+    GenResult, database::variables::UserData, watchdog::InstanceMap,
+    webcom::email::TIME_DESCRIPTION,
 };
 use serde::Serialize;
 use time::{Duration, OffsetDateTime, Time};

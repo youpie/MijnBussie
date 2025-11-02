@@ -8,10 +8,11 @@ use std::{
 use crate::errors::FailureType;
 use crate::health::ApplicationLogbook;
 use crate::{
-    GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES, kuma,
+    GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
+    database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
+    kuma,
     timer::{StartRequest, calculate_next_execution_time, get_system_time},
     user_instance,
-    variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
 };
 use sea_orm::DatabaseConnection;
 use serde::Serialize;

@@ -1,3 +1,4 @@
+use crate::database::secret::Secret;
 use crate::errors::IncorrectCredentialsCount;
 use crate::{APPLICATION_NAME, GenError, GenResult, get_data, webcom::shift::ShiftState};
 use crate::{
@@ -7,6 +8,7 @@ use lettre::{
     Message, SmtpTransport, Transport, message::header::ContentType,
     transport::smtp::authentication::Credentials,
 };
+use secrecy::ExposeSecret;
 use std::{collections::HashMap, fs, path::PathBuf};
 use strfmt::strfmt;
 use thirtyfour::error::{WebDriverErrorInfo, WebDriverResult};
@@ -42,7 +44,7 @@ pub struct EnvMailVariables {
     pub smtp_username: String,
     pub smtp_password: String,
     pub mail_from: String,
-    pub mail_to: String,
+    pub mail_to: Secret,
     mail_error_to: String,
     send_email_new_shift: bool,
     send_mail_updated_shift: bool,
@@ -284,7 +286,7 @@ fn create_send_new_email(
 
     let email = Message::builder()
         .from(format!("Peter <{}>", &env.mail_from).parse()?)
-        .to(format!("{} <{}>", &name, &env.mail_to).parse()?)
+        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
         .subject(format!(
             "Je hebt {} {} dienst{}",
             &new_shifts.len(),
@@ -372,7 +374,7 @@ fn send_removed_shifts_mail(
     )?;
     let email = Message::builder()
         .from(format!("{} <{}>", SENDER_NAME, &env.mail_from).parse()?)
-        .to(format!("{} <{}>", &name, &env.mail_to).parse()?)
+        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
         .subject(&format!(
             "{} dienst{} {} verwijderd",
             removed_shifts.len(),
@@ -518,7 +520,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     warn!("welkom mail sturen");
     let email = Message::builder()
         .from(format!("{} <{}>", SENDER_NAME, &env.mail_from).parse()?)
-        .to(format!("{} <{}>", name, &env.mail_to).parse()?)
+        .to(format!("{} <{}>", name, &env.mail_to.0.expose_secret()).parse()?)
         .subject(format!("Welkom bij {APPLICATION_NAME} {}!", &name))
         .header(ContentType::TEXT_HTML)
         .body(email_body_html)?;
@@ -585,7 +587,7 @@ pub fn send_failed_signin_mail(
 
     let email = Message::builder()
         .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
-        .to(format!("{} <{}>", &name, &env.mail_to).parse()?)
+        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
         .subject("INLOGGEN WEBCOM NIET GELUKT!")
         .header(ContentType::TEXT_HTML)
         .body(email_body_html)?;
@@ -617,7 +619,7 @@ pub fn send_sign_in_succesful() -> GenResult<()> {
 
     let email = Message::builder()
         .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
-        .to(format!("{} <{}>", name, &env.mail_to).parse()?)
+        .to(format!("{} <{}>", name, &env.mail_to.0.expose_secret()).parse()?)
         .subject(format!("{APPLICATION_NAME} kan weer inloggen!"))
         .header(ContentType::TEXT_HTML)
         .body(email_body_html)?;

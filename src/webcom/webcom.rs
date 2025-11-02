@@ -21,7 +21,6 @@ use crate::{
         webdriver::{get_driver, wait_until_loaded, wait_untill_redirect},
     },
 };
-use secrecy::ExposeSecret;
 use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
 use tracing::*;
@@ -33,8 +32,8 @@ async fn main_program(
     logbook: &mut ApplicationLogbook,
 ) -> GenResult<()> {
     let (user, _properties) = get_data();
-    let personeelsnummer = &user.personeelsnummer;
-    let password = &user.password;
+    let personeelsnummer = user.personeelsnummer.clone();
+    let password = user.password.clone();
     driver.delete_all_cookies().await?;
     info!("Loading site: {}..", MAIN_URL);
     match driver.goto(MAIN_URL).await {
@@ -50,7 +49,7 @@ async fn main_program(
                 .map_err(|_| Box::new(FailureType::ConnectError))?
         }
     };
-    load_calendar(&driver, personeelsnummer, password.0.expose_secret()).await?;
+    load_calendar(&driver, personeelsnummer, password).await?;
     wait_until_loaded(&driver).await?;
     let mut new_shifts = load_current_month_shifts(&driver, logbook).await?;
     let mut non_relevant_shifts = vec![];
