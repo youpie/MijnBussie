@@ -1,15 +1,17 @@
+use crate::api::auth::check_api_key;
+use crate::database::secret::Secret;
 use crate::database::variables::GeneralProperties;
 use crate::errors::OptionResult;
 use crate::timer::StartRequest;
 use crate::watchdog::{InstanceMap, RequestResponse};
 use crate::{GenResult, kuma};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
-use axum::{Json, Router};
+use axum::routing::{get, post};
+use axum::{Json, Router, middleware};
 use sea_orm::DatabaseConnection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -53,14 +55,18 @@ pub async fn api(
         sender: watchdog_sender,
         database: db,
     };
-    let app = Router::new()
-        .route("/api/{user_name}/{action}", get(get_information))
-        .route("/api/refresh", get(refresh_users))
-        .route("/api/refresh/{user_name}", get(refresh_users))
-        .route("/api/kuma/{action}/{user_name}", get(handle_kuma_request))
+    let api_routes = Router::new()
+        .route("/{user_name}/{action}", get(get_information))
+        .route("/refresh", get(refresh_users))
+        .route("/refresh/{user_name}", get(refresh_users))
+        .route("/kuma/{action}/{user_name}", get(handle_kuma_request))
+        .route("/encrypt", post(encrypt_input))
+        .layer(middleware::from_fn(check_api_key))
         .with_state(config);
+
+    let all_routes = Router::new().nest("/api", api_routes);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, all_routes).await.unwrap();
 }
 
 async fn refresh_users(
@@ -76,6 +82,19 @@ async fn refresh_users(
         )
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()));
     send.into_response()
+}
+
+#[derive(Deserialize)]
+struct PasswordQuery {
+    input: String
+}
+
+#[axum::debug_handler]
+async fn encrypt_input(Query(input): Query<PasswordQuery>) -> impl IntoResponse {
+    match Secret::encrypt_value(&input.input) {
+        Ok(value) => (StatusCode::OK, value),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "".to_owned())
+    }.into_response()
 }
 
 async fn get_information(

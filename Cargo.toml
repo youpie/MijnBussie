@@ -41,7 +41,7 @@ sea-orm = { version = "2.0.0-rc.14", features = [
 ] }
 simplestcrypt = "0.2.0"
 base64 = "0.22.1"
-axum = { version = "0.8.6", features = ["json"] }
+axum = { version = "0.8.6", features = ["json", "query", "macros"] }
 default = "0.1.2"
 strum = "0.27"
 strum_macros = "0.27"
@@ -50,3 +50,4 @@ tracing-appender = "0.2.3"
 tracing-subscriber = "0.3.20"
 tracing = "0.1.41"
 tracing-futures = { version = "0.2.5", features = ["tokio"] }
+tower = "0.5.2"
