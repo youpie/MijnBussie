@@ -1,21 +1,25 @@
 use std::path::PathBuf;
 
+use crate::errors::ResultLog;
+use crate::webcom::gebroken_shifts;
 use crate::{
     FALLBACK_URL, GenError, GenResult, MAIN_URL, create_path,
-    email::{self, send_errors, send_welcome_mail},
-    errors::{FailureType, IncorrectCredentialsCount, ResultLog, SignInFailure},
-    execution::StartRequest,
-    gebroken_shifts, get_data, get_set_name,
+    errors::{FailureType, IncorrectCredentialsCount, SignInFailure},
+    get_data, get_set_name,
     health::{ApplicationLogbook, send_heartbeat, update_calendar_exit_code},
-    ical::{
-        self, NON_RELEVANT_EVENTS_PATH, PreviousShiftInformation, RELEVANT_EVENTS_PATH,
-        create_ical, get_ical_path, get_previous_shifts, split_relevant_shifts,
+    timer::StartRequest,
+    webcom::{
+        email::{self, send_errors, send_welcome_mail},
+        ical::{
+            self, NON_RELEVANT_EVENTS_PATH, PreviousShiftInformation, RELEVANT_EVENTS_PATH,
+            create_ical, get_ical_path, get_previous_shifts, split_relevant_shifts,
+        },
+        parsing::{
+            load_calendar, load_current_month_shifts, load_next_month_shifts,
+            load_previous_month_shifts,
+        },
+        webdriver::{get_driver, wait_until_loaded, wait_untill_redirect},
     },
-    parsing::{
-        load_calendar, load_current_month_shifts, load_next_month_shifts,
-        load_previous_month_shifts,
-    },
-    webdriver::{get_driver, wait_until_loaded, wait_untill_redirect},
 };
 use secrecy::ExposeSecret;
 use thirtyfour::WebDriver;

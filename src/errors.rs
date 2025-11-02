@@ -1,4 +1,4 @@
-use crate::{GenResult, create_path, email, get_data};
+use crate::{GenResult, create_path, get_data, webcom::email};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::{

@@ -1,9 +1,10 @@
 use crate::{
-    GenResult, Shift,
-    email::{DATE_DESCRIPTION, TIME_DESCRIPTION},
+    GenResult,
     errors::ResultLog,
     get_data,
-    shift::ShiftState,
+    webcom::email::{DATE_DESCRIPTION, TIME_DESCRIPTION},
+    webcom::shift::Shift,
+    webcom::shift::ShiftState,
 };
 use thirtyfour::{WebDriver, WebElement, error::WebDriverResult, prelude::*};
 use time::{Duration, Time};

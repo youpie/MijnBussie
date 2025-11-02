@@ -6,21 +6,22 @@ const FALLBACK_URL: [&str; 2] = [
 ];
 const APPLICATION_NAME: &str = "Mijn Bussie";
 
-use crate::api::api;
+use crate::api::route::api;
 use crate::errors::FailureType;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
-use crate::execution::StartRequest;
-use crate::execution::execution_timer;
 use crate::health::ApplicationLogbook;
-use crate::ical::get_ical_path;
-use crate::shift::*;
+use crate::timer::StartRequest;
+use crate::timer::execution_timer;
 use crate::variables::GeneralProperties;
 use crate::variables::UserData;
 use crate::variables::UserInstanceData;
 use crate::watchdog::watchdog;
 use crate::watchdog::{InstanceMap, RequestResponse};
-use crate::webcom::webcom_instance;
+use crate::webcom::email;
+use crate::webcom::ical::get_ical_path;
+use crate::webcom::shift::*;
+use crate::webcom::webcom::webcom_instance;
 use dotenvy::dotenv_override;
 use dotenvy::var;
 use migration::Migrator;
@@ -40,9 +41,9 @@ use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::task_local;
+use tracing::instrument::WithSubscriber;
 use tracing::level_filters::LevelFilter;
 use tracing::*;
-use tracing::instrument::WithSubscriber;
 use tracing_appender::non_blocking;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
@@ -51,19 +52,13 @@ use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
 
 mod api;
-mod email;
 mod errors;
-mod execution;
-mod gebroken_shifts;
 mod health;
-mod ical;
 mod kuma;
-mod parsing;
-mod shift;
+mod timer;
 mod variables;
 mod watchdog;
 mod webcom;
-mod webdriver;
 
 type GenResult<T> = Result<T, GenError>;
 type GenError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -202,7 +197,8 @@ async fn spawn_webcom_instance(
                     RefCell::new(Some(properties)),
                     NAME.scope(RefCell::new(None), webcom_instance(start_request)),
                 ),
-            ).with_current_subscriber()
+            )
+            .with_current_subscriber(),
     ));
     true
 }
@@ -227,11 +223,16 @@ async fn user_instance(
 
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::WARN.into())
-        .from_env().unwrap();
+        .from_env()
+        .unwrap();
 
     let (non_blocking, _guard) = non_blocking::NonBlocking::new(tracer);
 
-    let subscriber = tracing_subscriber::fmt().with_ansi(false).with_writer(non_blocking).with_env_filter(filter).finish();
+    let subscriber = tracing_subscriber::fmt()
+        .with_ansi(false)
+        .with_writer(non_blocking)
+        .with_env_filter(filter)
+        .finish();
     async {
         info!("starting");
         let mut receiver = receiver;
@@ -250,7 +251,9 @@ async fn user_instance(
                     &webcom_thread,
                 ))),
                 StartRequest::Api => Some(RequestResponse::Active(
-                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).with_current_subscriber().await,
+                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code)
+                        .with_current_subscriber()
+                        .await,
                 )),
                 StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
                 StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
@@ -259,7 +262,9 @@ async fn user_instance(
                     email::send_welcome_mail(&get_ical_path(), true)
                 ))),
                 _ => {
-                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code).with_current_subscriber().await;
+                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code)
+                        .with_current_subscriber()
+                        .await;
                     None
                 }
             };
@@ -271,7 +276,9 @@ async fn user_instance(
                 break;
             }
         }
-    }.with_subscriber(subscriber).await;
+    }
+    .with_subscriber(subscriber)
+    .await;
 }
 
 fn check_env_permissions() -> GenResult<()> {

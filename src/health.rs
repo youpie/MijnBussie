@@ -8,8 +8,8 @@ use crate::{
     FailureType, GenResult, create_path,
     errors::SignInFailure,
     get_data,
-    ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
-    shift::Shift,
+    webcom::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
+    webcom::shift::Shift,
 };
 use serde::{Deserialize, Serialize};
 use tracing::*;

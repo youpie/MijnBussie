@@ -1,9 +1,10 @@
+use crate::errors::ResultLog;
 use crate::{
     GenResult,
-    email::send_errors,
-    errors::{FailureType, ResultLog},
+    errors::FailureType,
     get_set_name,
     health::{ApplicationLogbook, send_heartbeat},
+    webcom::email::send_errors,
 };
 use dotenvy::var;
 use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};

@@ -1,7 +1,7 @@
-use crate::email::{COLOR_GREEN, COLOR_RED};
 use crate::errors::OptionResult;
 use crate::variables::{GeneralProperties, UserData};
 use crate::watchdog::InstanceMap;
+use crate::webcom::email::{COLOR_GREEN, COLOR_RED};
 use crate::{APPLICATION_NAME, GenResult};
 use kuma_client::monitor::{MonitorGroup, MonitorType};
 use kuma_client::{Client, monitor, notification};

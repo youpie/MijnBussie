@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::{GenResult, email::TIME_DESCRIPTION, variables::UserData, watchdog::InstanceMap};
+use crate::{
+    GenResult, variables::UserData, watchdog::InstanceMap, webcom::email::TIME_DESCRIPTION,
+};
 use serde::Serialize;
 use time::{Duration, OffsetDateTime, Time};
 use tokio::{sync::RwLock, time::sleep};

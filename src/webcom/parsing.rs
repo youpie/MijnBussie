@@ -1,14 +1,13 @@
-use crate::email::DATE_DESCRIPTION;
 use crate::errors::{OptionResult, check_if_webcom_unavailable, check_sign_in_error};
-use crate::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
 use crate::health::ApplicationLogbook;
-use crate::webdriver::wait_until_loaded;
-use crate::{FailureType, GenResult, Shift, get_set_name};
+use crate::webcom::email::DATE_DESCRIPTION;
+use crate::webcom::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
+use crate::webcom::webdriver::wait_until_loaded;
+use crate::{FailureType, GenResult, get_set_name, webcom::shift::Shift};
 use async_recursion::async_recursion;
 use thirtyfour::prelude::ElementQueryable;
 use thirtyfour::{By, WebDriver};
 use time::{Date, Month};
-use tracing::*;
 use tracing::*;
 
 /*
