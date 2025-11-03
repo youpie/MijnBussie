@@ -7,4 +7,4 @@ COPY Cargo.toml ./
 
 RUN cargo install --path .
 
-CMD ["encode_password"]
+CMD ["mijn_bussie_auth"]
