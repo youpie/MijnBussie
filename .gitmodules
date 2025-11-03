@@ -1,0 +1,3 @@
+[submodule "auth/repo"]
+	path = auth/repo
+	url = git@github.com:youpie/mijn-bussie-auth.git
