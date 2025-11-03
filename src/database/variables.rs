@@ -1,17 +1,13 @@
-use std::sync::Arc;
-
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD_NO_PAD;
 use dotenvy::var;
 use entity::{
     donation_text, email_properties, general_properties_db, kuma_properties, user_data,
     user_properties,
 };
+use sea_orm::RelationTrait;
 use sea_orm::{ColumnTrait, QuerySelect};
 use sea_orm::{DatabaseConnection, DerivePartialModel, EntityTrait, QueryFilter};
-use sea_orm::{QueryResult, RelationTrait, TryGetable, Value, sea_query};
-use secrecy::{ExposeSecret, SecretString};
-use serde::{Serialize, Serializer};
+use serde::Serialize;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::GenResult;
