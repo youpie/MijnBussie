@@ -20,3 +20,6 @@ starting_minute
 pipe
 active
 log.*
+.idea
+data
+calendar
