@@ -2,8 +2,8 @@ use crate::api::auth::check_api_key;
 use crate::database::secret::Secret;
 use crate::database::variables::GeneralProperties;
 use crate::errors::OptionResult;
-use crate::timer::StartRequest;
-use crate::watchdog::{InstanceMap, RequestResponse};
+use crate::execution::timer::StartRequest;
+use crate::execution::watchdog::{InstanceMap, RequestResponse};
 use crate::{GenResult, kuma};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -86,15 +86,16 @@ async fn refresh_users(
 
 #[derive(Deserialize)]
 struct PasswordQuery {
-    input: String
+    input: String,
 }
 
 #[axum::debug_handler]
 async fn encrypt_input(Query(input): Query<PasswordQuery>) -> impl IntoResponse {
     match Secret::encrypt_value(&input.input) {
         Ok(value) => (StatusCode::OK, value),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "".to_owned())
-    }.into_response()
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "".to_owned()),
+    }
+    .into_response()
 }
 
 async fn get_information(

@@ -1,6 +1,7 @@
 use crate::database::variables::{GeneralProperties, UserData};
 use crate::errors::OptionResult;
-use crate::watchdog::InstanceMap;
+use crate::errors::ResultLog;
+use crate::execution::watchdog::InstanceMap;
 use crate::webcom::email::{COLOR_GREEN, COLOR_RED};
 use crate::{APPLICATION_NAME, GenResult};
 use kuma_client::monitor::{MonitorGroup, MonitorType};
@@ -23,7 +24,7 @@ pub async fn manage_users(
         return Ok(());
     }
     let kuma_properties = &properties.kuma_properties;
-    info!("Logging into kuma");
+    debug!("Logging into kuma");
     let client = connect_to_kuma(
         &Url::from_str(&kuma_properties.domain)?,
         &kuma_properties.username,
@@ -38,13 +39,16 @@ pub async fn manage_users(
             let monitor_id = get_monitor_id(&user, &client).await;
             if let Some(id) = monitor_id {
                 info!("Deleting monitor: {id}");
-                client.delete_monitor(id).await?;
+                client.delete_monitor(id).await.warn("Deleting monitor");
             }
 
             let notification_id = get_notification_id(&user, &client).await;
             if let Some(id) = notification_id {
                 info!("Deleting notification: {id}");
-                client.delete_notification(id).await?;
+                client
+                    .delete_notification(id)
+                    .await
+                    .warn("Deleting notification");
             }
         }
     }
@@ -56,7 +60,8 @@ pub async fn manage_users(
             let notification_id = create_notification(&user, &local_properties, &client).await?;
             info!("Creating monitor {}", user.user_name);
             _ = create_monitor(&user, &local_properties, &client, notification_id, group_id)
-                .await?;
+                .await
+                .warn("Creating monitor");
         }
     }
     Ok(())

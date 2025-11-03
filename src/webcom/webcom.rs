@@ -5,9 +5,9 @@ use crate::webcom::gebroken_shifts;
 use crate::{
     FALLBACK_URL, GenError, GenResult, MAIN_URL, create_path,
     errors::{FailureType, IncorrectCredentialsCount, SignInFailure},
+    execution::timer::StartRequest,
     get_data, get_set_name,
     health::{ApplicationLogbook, send_heartbeat, update_calendar_exit_code},
-    timer::StartRequest,
     webcom::{
         email::{self, send_errors, send_welcome_mail},
         ical::{

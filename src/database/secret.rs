@@ -6,7 +6,7 @@ use serde::{Serialize, Serializer};
 
 use crate::{GenResult, errors::OptionResult};
 
-/// A SecretString wrapper that automatically decodes from the "PASSWORD_SECRET" env variable
+/// A `SecretString` wrapper that automatically decodes using the `$PASSWORD_SECRET`
 #[derive(Clone, Debug)]
 pub struct Secret(pub SecretString);
 

@@ -6,13 +6,13 @@ use std::{
 };
 
 use crate::errors::FailureType;
+use crate::errors::ResultLog;
 use crate::health::ApplicationLogbook;
 use crate::{
     GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
     database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
-    kuma,
-    timer::{StartRequest, calculate_next_execution_time, get_system_time},
-    user_instance,
+    execution::timer::{StartRequest, calculate_next_execution_time, get_system_time},
+    kuma, user_instance,
 };
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
@@ -100,13 +100,14 @@ pub async fn watchdog(
     receiver: &mut Receiver<String>,
 ) -> GenResult<()> {
     loop {
-        if let Ok(Some(user)) = timeout(Duration::from_secs(60 * 5), receiver.recv()).await
+        // Update all users in the database every 30 minutes
+        if let Ok(Some(user)) = timeout(Duration::from_secs(60 * 30), receiver.recv()).await
             && !user.is_empty()
         {
             info!("Updating user {user}");
-            refresh_instances(db, &vec![user], &mut *instances.write().await).await?;
+            refresh_instances(db, &vec![user], &mut *instances.write().await).await;
         } else {
-            info!("Updating users");
+            debug!("Updating users");
             let users = UserData::get_all_usernames(db).await?;
             start_stop_instances(db, instances.clone(), &users).await?;
             info!("Users: {users:#?}");
@@ -135,10 +136,12 @@ async fn start_stop_instances(
     }
     // Load the default preferences and write them to the global variable
     let default_preferences =
+        // If the preferences are already set, only replace the value inside the RwLock
         if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
             let default_preferences = GeneralProperties::load_default_preferences(db).await?;
             *default_properties.write().await = default_preferences.clone();
             default_preferences
+        // If the preferences are not yet set, create a new Arc and RwLock
         } else {
             let default_preferences = GeneralProperties::load_default_preferences(db).await?;
             DEFAULT_PROPERTIES
@@ -154,16 +157,17 @@ async fn start_stop_instances(
         get_equal_instances(InstanceState::Remain, &instances_state, &active_instances);
     let instances_to_add =
         get_equal_instances(InstanceState::New, &instances_state, &active_instances);
-    add_instances(db, &instances_to_add, &mut active_instances).await?;
+    add_instances(db, &instances_to_add, &mut active_instances).await;
     stop_instances(&instances_to_remove, &mut active_instances);
-    refresh_instances(db, &instances_to_refresh, &mut active_instances).await?;
+    refresh_instances(db, &instances_to_refresh, &mut active_instances).await;
     kuma::manage_users(
         &instances_to_add,
         &instances_to_remove,
         &active_instances,
         &default_preferences,
     )
-    .await?;
+    .await
+    .warn("Kuma run");
     Ok(())
 }
 
@@ -180,20 +184,23 @@ async fn refresh_instances(
     db: &DatabaseConnection,
     instances_to_refresh: &Vec<String>,
     active_instances: &mut InstanceMap,
-) -> GenResult<()> {
+) {
     for insance_name in instances_to_refresh {
         if let Some(instance) = active_instances.get_mut(insance_name) {
-            instance.user_instance_data.update_user(db).await?;
+            instance
+                .user_instance_data
+                .update_user(db)
+                .await
+                .warn("Updating User");
         }
     }
-    Ok(())
 }
 
 async fn add_instances(
     db: &DatabaseConnection,
     instances_to_add: &Vec<String>,
     active_instances: &mut InstanceMap,
-) -> GenResult<()> {
+) {
     // Load the default preferences, load that to the static variable and then also return the value.
     let default_preferences = DEFAULT_PROPERTIES
         .read()
@@ -202,17 +209,20 @@ async fn add_instances(
         .expect("Default preferences not set");
 
     for new_user in instances_to_add {
-        let user_data_option =
-            UserInstanceData::load_user(db, &new_user, default_preferences.clone()).await?;
-        if let Some(user_data) = user_data_option {
-            info!("Starting user {new_user}");
-            let new_instance = UserInstance::new(user_data).await;
-            active_instances.insert(new_user.clone(), new_instance);
-        } else {
-            info!("Failed to add user {new_user}, no entry was found");
-        }
+        match UserInstanceData::load_user(db, &new_user, default_preferences.clone())
+            .await
+            .warn_owned("Adding user")
+            .ok()
+            .flatten()
+        {
+            Some(user_data) => {
+                info!("Starting user {new_user}");
+                let new_instance = UserInstance::new(user_data).await;
+                active_instances.insert(new_user.clone(), new_instance);
+            }
+            None => warn!("Failed to add user {new_user}, no entry was found"),
+        };
     }
-    Ok(())
 }
 
 fn get_equal_instances(
