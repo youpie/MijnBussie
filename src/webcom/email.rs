@@ -11,7 +11,6 @@ use lettre::{
 use secrecy::ExposeSecret;
 use std::{collections::HashMap, fs, path::PathBuf};
 use strfmt::strfmt;
-use thirtyfour::error::{WebDriverErrorInfo, WebDriverResult};
 use time::{Date, macros::format_description};
 use tracing::*;
 use url::Url;
@@ -410,33 +409,6 @@ pub fn send_errors(errors: &Vec<GenError>, name: &str) -> GenResult<()> {
         .from(format!("Foutje Berichtmans <{}>", &env.mail_from).parse()?)
         .to(format!("{} <{}>", &name, &env.mail_error_to).parse()?)
         .subject(&format!("Fout bij laden shifts van: {}", name))
-        .header(ContentType::TEXT_PLAIN)
-        .body(email_errors)?;
-    mailer.send(&email)?;
-    Ok(())
-}
-
-pub fn send_gecko_error_mail<T: std::fmt::Debug>(error: WebDriverResult<T>) -> GenResult<()> {
-    let env = EnvMailVariables::new();
-    if !env.send_error_mail {
-        info!("tried to send GECKO error mail, but is disabled");
-        return Ok(());
-    }
-    let mailer = load_mailer(&env)?;
-    let mut email_errors = "!!! KAN NIET VERBINDEN MET GECKO !!!\n".to_string();
-    email_errors.push_str(&format!(
-        "Error: \n{}\n\n",
-        error
-            .err()
-            .unwrap_or(thirtyfour::error::WebDriverError::UnknownError(
-                WebDriverErrorInfo::new("Unknown".to_owned())
-            ))
-            .to_string()
-    ));
-    let email = Message::builder()
-        .from(format!("Foutje Berichtmans <{}>", &env.mail_from).parse()?)
-        .to(format!("{} <{}>", "user", &env.mail_error_to).parse()?)
-        .subject(&format!("KAN NIET VERBINDEN MET GECKO"))
         .header(ContentType::TEXT_PLAIN)
         .body(email_errors)?;
     mailer.send(&email)?;
