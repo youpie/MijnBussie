@@ -10,11 +10,29 @@ services:
     environment:
       - RUST_LOG=mijn_bussie=info
     ports:
-      - ${API_PORT}:3000
+      # - ${INSTANCE_API_PORT}:3000
     restart: unless-stopped
     networks:
       - MijnBussie
     depends_on:
+      - db
+      - selenium-hub
+      - node-docker
+
+  mijn-bussie-auth: 
+    image: docker.io/library/mijn_bussie_auth
+    user: root
+    volumes:
+      - .env:/usr/src/mijn_bussie/.env
+    environment:
+      - RUST_LOG=mijn_bussie=info
+    ports:
+      - ${API_PORT}
+    restart: unless-stopped
+    networks:
+      - MijnBussie
+    depends_on:
+      - webcom-ical-db
       - db
       - selenium-hub
       - node-docker

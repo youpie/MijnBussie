@@ -16,7 +16,7 @@ impl MigrationTrait for Migration {
                     .table(UserAccount::Table)
                     .if_not_exists()
                     .col(pk_auto(UserAccount::AccountId))
-                    .col(string(UserAccount::Username))
+                    .col(string(UserAccount::Username).unique_key())
                     .col(string(UserAccount::PasswordHash))
                     .col(string(UserAccount::Role))
                     .col(string(UserAccount::BackendUser).null())
