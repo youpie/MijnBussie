@@ -6,6 +6,7 @@ mod m20251006_141509_kuma;
 mod m20251006_143409_general_settings;
 mod m20251008_194017_user_settings;
 mod m20251008_194417_user_data;
+mod m20251110_155639_user_account;
 
 pub struct Migrator;
 
@@ -19,6 +20,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20251006_143409_general_settings::Migration),
             Box::new(m20251008_194017_user_settings::Migration),
             Box::new(m20251008_194417_user_data::Migration),
+            Box::new(m20251110_155639_user_account::Migration),
         ]
     }
 }
