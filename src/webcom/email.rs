@@ -264,7 +264,7 @@ fn create_send_new_email(
             shift_duration_hour => shift.duration.whole_hours().to_string(),
             shift_duration_minute => (shift.duration.whole_minutes() % 60).to_string(),
             shift_link => create_shift_link(shift, false).unwrap_or_default(),
-            bussie_login => if let Ok(url) = create_footer(true) {format!("/loginlink/{url}")} else {String::new()},
+            bussie_login => if let Ok(url) = create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
             shift_link_pdf => create_shift_link(shift, true).unwrap_or_default()
         )?;
         shift_tables.push_str(&shift_table_clone);
@@ -280,7 +280,7 @@ fn create_send_new_email(
     let email_body_html = strfmt!(&base_html,
         content => changed_mail_html,
         banner_color => COLOR_BASE,
-        footer => create_footer(false).unwrap_or(ERROR_VALUE.to_owned())
+        footer => create_footer().unwrap_or(ERROR_VALUE.to_owned())
     )?;
 
     let email = Message::builder()
@@ -298,7 +298,7 @@ fn create_send_new_email(
     Ok(())
 }
 
-fn create_footer(only_url: bool) -> GenResult<String> {
+fn create_footer() -> GenResult<String> {
     let (_user, properties) = get_data();
     let footer_text = r#"<tr>
       <td style="background-color:#FFFFFF; text-align:center; padding-top:0px;font-size:12px;">
@@ -313,19 +313,19 @@ fn create_footer(only_url: bool) -> GenResult<String> {
         <a style="color:#9a9996;">{admin_email_comment}</a>
       </td>
       </tr>"#;
+    let admin_email = &properties.support_mail;
+    Ok(    strfmt!(footer_text,
+            footer_text => "Je agenda link:",
+            footer_url => create_calendar_link()?.to_string(),
+            admin_email_comment => format!("Vragen of opmerkingen? Neem contact op met {admin_email}"))
+        .unwrap_or_default())
+}
+
+pub fn create_calendar_link() -> GenResult<Url> {
+    let (_user, properties) = get_data();
     let domain = &properties.ical_domain;
     let url = Url::parse(domain)?;
-    let url = url.join(&create_ical_filename())?;
-    let admin_email = &properties.support_mail;
-    let return_value = match only_url {
-        true => url.to_string(),
-        false => strfmt!(footer_text,
-            footer_text => "Je agenda link:",
-            footer_url => url.to_string(),
-            admin_email_comment => format!("Vragen of opmerkingen? Neem contact op met {admin_email}"))
-        .unwrap_or_default(),
-    };
-    Ok(return_value)
+    Ok(url.join(&create_ical_filename())?)
 }
 
 fn send_removed_shifts_mail(
@@ -354,7 +354,7 @@ fn send_removed_shifts_mail(
             shift_duration_hour => shift.duration.whole_hours().to_string().strikethrough(),
             shift_duration_minute => (shift.duration.whole_minutes() % 60).to_string().strikethrough(),
             shift_link => create_shift_link(shift, false).unwrap_or_default(),
-            bussie_login => if let Ok(url) = create_footer(true) {format!("/loginlink/{url}")} else {String::new()},
+            bussie_login => if let Ok(url) = create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
             shift_link_pdf => create_shift_link(shift, true).unwrap_or_default()
         )?;
         shift_tables.push_str(&shift_table_clone);
@@ -369,7 +369,7 @@ fn send_removed_shifts_mail(
     let email_body_html = strfmt!(&base_html,
         content => removed_shift_html,
         banner_color => COLOR_BASE,
-        footer => create_footer(false).unwrap_or_default()
+        footer => create_footer().unwrap_or_default()
     )?;
     let email = Message::builder()
         .from(format!("{} <{}>", SENDER_NAME, &env.mail_from).parse()?)
@@ -435,7 +435,7 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
 
     let name = get_set_name(None);
 
-    let agenda_url = create_footer(true).unwrap_or(ERROR_VALUE.to_owned());
+    let agenda_url = create_calendar_link()?.to_string();
     let agenda_url_webcal = agenda_url.clone().replace("https", "webcal");
     // A lot of email clients don't want to open webcal links. So by pointing to a website which returns a 302 to a webcal link it tricks the email client
     let rewrite_url = &properties.webcal_domain;
@@ -554,7 +554,7 @@ pub fn send_failed_signin_mail(
     let email_body_html = strfmt!(&base_html,
         content => login_failure_html,
         banner_color => COLOR_RED,
-        footer => create_footer(false).unwrap_or_default()
+        footer => create_footer().unwrap_or_default()
     )?;
 
     let email = Message::builder()
@@ -586,7 +586,7 @@ pub fn send_sign_in_succesful() -> GenResult<()> {
     let email_body_html = strfmt!(&base_html,
         content => sign_in_email_html,
         banner_color => COLOR_GREEN,
-        footer => create_footer(false).unwrap_or_default()
+        footer => create_footer().unwrap_or_default()
     )?;
 
     let email = Message::builder()

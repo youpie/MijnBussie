@@ -19,6 +19,7 @@ use crate::execution::watchdog::watchdog;
 use crate::execution::watchdog::{InstanceMap, RequestResponse};
 use crate::health::ApplicationLogbook;
 use crate::webcom::email;
+use crate::webcom::email::create_calendar_link;
 use crate::webcom::ical::get_ical_path;
 use crate::webcom::shift::*;
 use crate::webcom::webcom::webcom_instance;
@@ -26,6 +27,8 @@ use dotenvy::dotenv_override;
 use dotenvy::var;
 use migration::Migrator;
 use migration::MigratorTrait;
+use rustls::crypto::CryptoProvider;
+use rustls::crypto::ring::default_provider;
 use sea_orm::Database;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -260,6 +263,7 @@ async fn user_instance(
                     "{:?}",
                     email::send_welcome_mail(&get_ical_path(), true)
                 ))),
+                StartRequest::Calendar => return_calendar_response(),
                 _ => {
                     spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code)
                         .with_current_subscriber()
@@ -278,6 +282,13 @@ async fn user_instance(
     }
     .with_subscriber(subscriber)
     .await;
+}
+
+fn return_calendar_response() -> Option<RequestResponse> {
+    match create_calendar_link() {
+        Ok(link) => Some(RequestResponse::GenResponse(link.to_string())),
+        Err(_) => None,
+    }
 }
 
 fn check_env_permissions() -> GenResult<()> {
@@ -313,7 +324,7 @@ async fn main() -> GenResult<()> {
 
     dotenv_override()?;
     info!("Starting {APPLICATION_NAME}");
-
+    CryptoProvider::install_default(default_provider()).unwrap();
     // let args = Args::parse();
 
     let db = Database::connect(&var("DATABASE_URL")?)

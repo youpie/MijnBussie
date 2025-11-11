@@ -22,6 +22,7 @@ pub enum StartRequest {
     ExitCode,
     UserData,
     Welcome,
+    Calendar,
 }
 
 pub fn get_system_time() -> Time {
