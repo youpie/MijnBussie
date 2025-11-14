@@ -22,6 +22,7 @@ def parse_env(path):
         vars[k.strip()] = v.strip().strip('"').strip("'")
     return vars
 
+
 def collect_env_maps(base):
     email_map = {}
     user_map = {}
