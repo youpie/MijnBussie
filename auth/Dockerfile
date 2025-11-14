@@ -4,6 +4,7 @@ WORKDIR /usr/src/mijn_bussie_auth
 COPY ./src ./src
 COPY Cargo.lock ./
 COPY Cargo.toml ./
+COPY entity ./entity
 
 RUN cargo install --path .
 
