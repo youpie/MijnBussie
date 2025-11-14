@@ -8,7 +8,7 @@ services:
       - ${SAVE_TARGET}:/usr/src/mijn_bussie/calendar/
       - ./data/:/usr/src/mijn_bussie/data/
     environment:
-      - RUST_LOG=mijn_bussie=info
+      - RUST_LOG=${BUSSIE_LOG}
     #ports:
     #  - ${INSTANCE_API_PORT}:3000
     restart: unless-stopped
@@ -23,9 +23,10 @@ services:
     image: docker.io/library/mijn_bussie_auth
     user: root
     volumes:
+
       - .env:/usr/src/mijn_bussie_auth/.env
     environment:
-      - RUST_LOG=mijn_bussie=info
+      - RUST_LOG=${AUTH_LOG}
     ports:
       - ${API_PORT}
     restart: unless-stopped
@@ -49,6 +50,8 @@ services:
     ports:
       # WARNING: Exposes database
       - 5432:5432
+    networks:
+      - MijnBussie
     volumes:
       - ./pg_data:/var/lib/postgresql
 
