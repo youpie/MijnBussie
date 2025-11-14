@@ -1,4 +1,4 @@
-FROM rust:1.89.0
+FROM rust:1.91.1
 
 WORKDIR /usr/src/mijn_bussie
 COPY ./src ./src
