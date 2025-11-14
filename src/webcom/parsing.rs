@@ -151,10 +151,11 @@ pub async fn load_calendar(driver: &WebDriver, user: Secret, pass: Secret) -> Ge
 }
 
 async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenResult<()> {
-    let possible_error = match driver.find(By::Id("h3")).await {
+    let possible_error = match driver.find(By::Id("_error_header")).await {
         Ok(element) => Some(element.text().await.unwrap_or("GEEN TEKST".to_owned())),
         Err(_) => None,
     };
+    error!("{possible_error:?}");
     let username_field = driver
         .find(By::Id("ctl00_cntMainBody_lgnView_lgnLogin_UserName"))
         .await
