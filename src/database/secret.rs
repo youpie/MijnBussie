@@ -10,6 +10,13 @@ use crate::{GenResult, errors::OptionResult};
 #[derive(Clone, Debug)]
 pub struct Secret(pub SecretString);
 
+impl Secret {
+    pub fn new(input: String) -> GenResult<Self> {
+        let box_str = Self::decrypt_value(input)?;
+        Ok(Secret(SecretString::new(box_str.into())))
+    }
+}
+
 // 1) From<Secret> for sea_orm::Value
 impl From<Secret> for Value {
     fn from(source: Secret) -> Self {

@@ -155,7 +155,6 @@ async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenRe
         Ok(element) => Some(element.text().await.unwrap_or("GEEN TEKST".to_owned())),
         Err(_) => None,
     };
-    error!("{possible_error:?}");
     let username_field = driver
         .find(By::Id("ctl00_cntMainBody_lgnView_lgnLogin_UserName"))
         .await

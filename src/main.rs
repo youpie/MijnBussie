@@ -7,6 +7,7 @@ const FALLBACK_URL: [&str; 2] = [
 const APPLICATION_NAME: &str = "Mijn Bussie";
 
 use crate::api::route::api;
+use crate::database::secret::Secret;
 use crate::database::variables::GeneralProperties;
 use crate::database::variables::UserData;
 use crate::database::variables::UserInstanceData;
@@ -38,6 +39,7 @@ use sea_orm::IntoActiveModel;
 use secrecy::ExposeSecret;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fs::set_permissions;
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
@@ -143,22 +145,11 @@ pub fn create_path(filename: &str) -> PathBuf {
 }
 
 fn get_set_name(set_new_name: Option<String>) -> String {
-    let (user, properties) = get_data();
-    get_set_name_local(user.as_ref(), properties.as_ref(), set_new_name)
+    let (user, _properties) = get_data();
+    get_set_name_local(user.as_ref(), set_new_name)
 }
 
-pub fn get_set_name_local(
-    user: &UserData,
-    properties: &GeneralProperties,
-    set_new_name: Option<String>,
-) -> String {
-    // Just return constant name if already set
-    if let Some(const_name) = &*NAME.get().borrow()
-        && set_new_name.is_none()
-    {
-        return const_name.to_owned();
-    }
-
+pub fn get_set_name_local(user: &UserData, set_new_name: Option<String>) -> String {
     // To get the name, first try the new name function body variable.
     // Then try the global variable
     // Then try the Local database variable (which is not set the first time the instance is ever run)
@@ -175,24 +166,26 @@ pub fn get_set_name_local(
         )
         .to_owned();
 
-    NAME.get().replace(Some(name.clone()));
-
     // Open a database connection and write the new name to the database, if a new name request is done
-    if let Some(new_name) = set_new_name {
+    if let Some(new_name) = set_new_name
+        && Some(new_name.as_str()) != NAME.get().borrow().as_deref()
+    {
         tokio::task::block_in_place(move || {
             Handle::current().block_on(update_name(new_name, user.id))
         })
         .warn("Setting name");
     }
+    NAME.get().replace(Some(name.clone()));
     name
 }
 
 async fn update_name(new_name: String, data_id: i32) -> GenResult<()> {
+    info!("Changing user name to {new_name}");
     let db = get_database_connection().await;
     let data = user_data::Entity::find_by_id(data_id).one(&db).await?;
     if let Some(model) = data {
         let mut active_model = model.into_active_model();
-        active_model.name = Set(Some(new_name));
+        active_model.name = Set(Some(Secret::encrypt_value(&new_name)?));
         user_data::Entity::update(active_model)
             .validate()?
             .exec(&db)
@@ -319,6 +312,15 @@ fn return_calendar_response() -> Option<RequestResponse> {
         Ok(link) => Some(RequestResponse::GenResponse(link.to_string())),
         Err(_) => None,
     }
+}
+
+pub fn set_strict_file_permissions(path: &PathBuf) -> GenResult<()> {
+    let file = std::fs::File::open(&path)?;
+    let metadata = file.metadata()?;
+    let mut file_mode = metadata.permissions();
+    file_mode.set_mode(0o100600);
+    set_permissions(&path, file_mode)?;
+    Ok(())
 }
 
 fn check_env_permissions() -> GenResult<()> {

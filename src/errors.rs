@@ -1,4 +1,4 @@
-use crate::{GenResult, create_path, get_data, webcom::email};
+use crate::{GenResult, create_path, get_data, set_strict_file_permissions, webcom::email};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -120,7 +120,10 @@ impl IncorrectCredentialsCount {
     fn save(&self) -> GenResult<()> {
         let path = create_path("sign_in_failure_count.json");
         let failure_counter_serialised = serde_json::to_string(self)?;
-        Ok(write(path, failure_counter_serialised.as_bytes())?)
+        write(path.clone(), failure_counter_serialised.as_bytes())
+            .warn("saving incorrect credentials");
+        set_strict_file_permissions(&path).warn("setting incorrect credentials permissions");
+        Ok(())
     }
 
     fn get_password_hash() -> GenResult<u64> {
