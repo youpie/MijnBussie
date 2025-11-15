@@ -146,10 +146,13 @@ pub struct KumaProperties {
 #[derive(DerivePartialModel, Debug, Clone, Serialize)]
 #[sea_orm(entity = "user_data::Entity")]
 pub struct UserData {
+    #[sea_orm(from_col = "user_data_id")]
+    pub id: i32,
     pub user_name: String,
     pub personeelsnummer: Secret,
     pub password: Secret,
     pub email: Secret,
+    pub name: Option<Secret>,
     pub file_name: String,
     #[sea_orm(nested)]
     pub user_properties: user_properties::Model,

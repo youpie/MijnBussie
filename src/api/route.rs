@@ -11,7 +11,7 @@ use axum::routing::get;
 use axum::{Json, Router, middleware};
 use axum_server::tls_rustls::RustlsConfig;
 use sea_orm::DatabaseConnection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub struct ServerConfig {
     database: DatabaseConnection,
 }
 
-#[derive(Clone, EnumString, Debug, PartialEq, Serialize)]
+#[derive(Clone, EnumString, Debug, PartialEq, Serialize, Deserialize)]
 enum Action {
     #[strum(ascii_case_insensitive)]
     Logbook,
@@ -47,6 +47,14 @@ enum Action {
     Welcome,
     #[strum(ascii_case_insensitive)]
     Calendar,
+}
+
+#[derive(Clone, Copy, EnumString, Debug, PartialEq, Deserialize)]
+enum KumaAction {
+    #[strum(ascii_case_insensitive)]
+    Reset,
+    #[strum(ascii_case_insensitive)]
+    Delete,
 }
 
 pub async fn api(
@@ -96,13 +104,13 @@ async fn refresh_users(
                 .and_then(|path| Some(path.to_string()))
                 .unwrap_or_default(),
         )
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()));
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())));
     send.into_response()
 }
 
 async fn get_information(
     State(data): State<ServerConfig>,
-    Path((user_name, action)): Path<(String, String)>,
+    Path((user_name, action)): Path<(String, Action)>,
 ) -> impl IntoResponse {
     info!("Got a request for {user_name}");
 
@@ -121,16 +129,15 @@ async fn get_information(
                 }
             }
         }
-        None => (StatusCode::NOT_FOUND, "User not found".to_string()).into_response(),
+        None => (StatusCode::NOT_FOUND, Json("User not found".to_string())).into_response(),
     }
 }
 
 async fn send_request(
-    request_type: String,
+    action: Action,
     request_sender: &Sender<StartRequest>,
     response_receiver: &mut Receiver<RequestResponse>,
 ) -> GenResult<RequestResponse> {
-    let action: Action = Action::from_str(&request_type)?;
     let start_request = match action {
         Action::Logbook => StartRequest::Logbook,
         Action::IsActive => StartRequest::IsActive,
@@ -151,11 +158,11 @@ async fn send_request(
 
 async fn handle_kuma_request(
     State(data): State<ServerConfig>,
-    Path((action, user_name)): Path<(String, String)>,
+    Path((action, user_name)): Path<(KumaAction, String)>,
 ) -> impl IntoResponse {
     match handle_kuma(&data.database, data.map, user_name, action).await {
-        Ok(_) => (StatusCode::OK, "OK".to_string()),
-        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
+        Ok(_) => (StatusCode::OK, Json("OK".to_string())),
+        Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())),
     }
 }
 
@@ -163,28 +170,30 @@ async fn handle_kuma(
     db: &DatabaseConnection,
     instance_map: Arc<RwLock<InstanceMap>>,
     user_name: String,
-    action: String,
+    action: KumaAction,
 ) -> GenResult<()> {
     let instance_map = &*instance_map.read().await;
     let mut users_to_remove = vec![];
     let mut users_to_add = vec![];
-    if action == "delete" {
-        if user_name == "all" {
-            users_to_remove = instance_map.keys().cloned().collect();
-        } else {
-            users_to_remove.push(user_name.clone());
+    match action {
+        KumaAction::Reset => {
+            if user_name == "all" {
+                users_to_add = instance_map.keys().cloned().collect();
+                users_to_remove = instance_map.keys().cloned().collect();
+            } else {
+                users_to_add.push(user_name.clone());
+                users_to_remove.push(user_name);
+            }
         }
-    } else if action == "reset" {
-        if user_name == "all" {
-            users_to_add = instance_map.keys().cloned().collect();
-            users_to_remove = instance_map.keys().cloned().collect();
-        } else {
-            users_to_add.push(user_name.clone());
-            users_to_remove.push(user_name);
+        KumaAction::Delete => {
+            if user_name == "all" {
+                users_to_remove = instance_map.keys().cloned().collect();
+            } else {
+                users_to_remove.push(user_name.clone());
+            }
         }
-    } else {
-        return Err("Unknown action".into());
     }
+
     let general_properties = GeneralProperties::load_default_preferences(db).await?;
     kuma::manage_users(
         &users_to_add,

@@ -25,11 +25,17 @@ use crate::webcom::shift::*;
 use crate::webcom::webcom::webcom_instance;
 use dotenvy::dotenv_override;
 use dotenvy::var;
+use entity::user_data;
 use migration::Migrator;
 use migration::MigratorTrait;
 use rustls::crypto::CryptoProvider;
 use rustls::crypto::ring::default_provider;
+use sea_orm::ActiveValue::Set;
 use sea_orm::Database;
+use sea_orm::DatabaseConnection;
+use sea_orm::EntityTrait;
+use sea_orm::IntoActiveModel;
+use secrecy::ExposeSecret;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::unix::fs::MetadataExt;
@@ -37,7 +43,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use time::macros::format_description;
-use tokio::fs::write;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::channel;
@@ -147,30 +152,55 @@ pub fn get_set_name_local(
     properties: &GeneralProperties,
     set_new_name: Option<String>,
 ) -> String {
-    let path = create_path_local(user, properties, "name");
     // Just return constant name if already set
     if let Some(const_name) = &*NAME.get().borrow()
         && set_new_name.is_none()
     {
         return const_name.to_owned();
     }
-    let mut name = std::fs::read_to_string(&path)
-        .ok()
-        .unwrap_or("Onbekend".to_owned());
 
-    // Write new name if previous name is different (deadname protection lmao)
-    if let Some(new_name) = set_new_name
-        && new_name != name
-    {
-        let new_name_clone = new_name.clone();
-        tokio::task::block_in_place(move || {
-            Handle::current().block_on(write(&path, &new_name_clone))
-        })
-        .error("Opslaan van naam");
-        name = new_name;
-    }
+    // To get the name, first try the new name function body variable.
+    // Then try the global variable
+    // Then try the Local database variable (which is not set the first time the instance is ever run)
+    // So if this is called before the first time the instance is run, it wil return "Onbekend"
+    let name = set_new_name
+        .as_deref()
+        .unwrap_or(
+            NAME.get().borrow().as_deref().unwrap_or(
+                user.name
+                    .as_ref()
+                    .and_then(|secret| Some(secret.0.expose_secret()))
+                    .unwrap_or("Onbekend"),
+            ),
+        )
+        .to_owned();
+
     NAME.get().replace(Some(name.clone()));
+
+    // Open a database connection and write the new name to the database, if a new name request is done
+    if let Some(new_name) = set_new_name {
+        tokio::task::block_in_place(move || {
+            Handle::current().block_on(update_name(new_name, user.id))
+        })
+        .warn("Setting name");
+    }
     name
+}
+
+async fn update_name(new_name: String, data_id: i32) -> GenResult<()> {
+    let db = get_database_connection().await;
+    let data = user_data::Entity::find_by_id(data_id).one(&db).await?;
+    if let Some(model) = data {
+        let mut active_model = model.into_active_model();
+        active_model.name = Set(Some(new_name));
+        user_data::Entity::update(active_model)
+            .validate()?
+            .exec(&db)
+            .await?;
+        Ok(())
+    } else {
+        Err("UserData not found".into())
+    }
 }
 
 /// If Webcom is running
@@ -307,6 +337,12 @@ fn check_env_permissions() -> GenResult<()> {
     }
 }
 
+async fn get_database_connection() -> DatabaseConnection {
+    Database::connect(&var("DATABASE_URL").expect("Failed to get database URL"))
+        .await
+        .expect("Could not connect to database")
+}
+
 #[tokio::main]
 async fn main() -> GenResult<()> {
     let filter = EnvFilter::builder()
@@ -327,9 +363,7 @@ async fn main() -> GenResult<()> {
     CryptoProvider::install_default(default_provider()).unwrap();
     // let args = Args::parse();
 
-    let db = Database::connect(&var("DATABASE_URL")?)
-        .await
-        .expect("Could not connect to database");
+    let db = get_database_connection().await;
 
     // Apply all pending migrations
     Migrator::up(&db, None).await?;

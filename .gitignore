@@ -24,3 +24,4 @@ log.*
 data
 calendar
 cert/
+docker_images

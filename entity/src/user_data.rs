@@ -16,6 +16,7 @@ pub struct Model {
     pub file_name: String,
     pub user_properties: i32,
     pub custom_general_properties: Option<i32>,
+    pub name: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
