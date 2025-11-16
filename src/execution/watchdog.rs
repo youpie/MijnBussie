@@ -5,8 +5,6 @@ use std::{
     time::Duration,
 };
 
-use crate::errors::FailureType;
-use crate::errors::ResultLog;
 use crate::health::ApplicationLogbook;
 use crate::{
     GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
@@ -14,6 +12,8 @@ use crate::{
     execution::timer::{StartRequest, calculate_next_execution_time, get_system_time},
     kuma, user_instance,
 };
+use crate::{errors::FailureType, kuma::KumaUserRequest};
+use crate::{errors::ResultLog, kuma::KumaAction};
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use time::Time;
@@ -32,6 +32,13 @@ enum InstanceState {
     New,
     Remain,
     Remove,
+}
+
+#[derive(Clone)]
+pub enum WatchdogRequest {
+    SingleUser(String),
+    KumaRequest((KumaAction, KumaUserRequest)),
+    AllUser,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -97,15 +104,25 @@ static DEFAULT_PROPERTIES: RwCell<ThreadShare<GeneralProperties>> =
 pub async fn watchdog(
     instances: Arc<RwLock<InstanceMap>>,
     db: &DatabaseConnection,
-    receiver: &mut Receiver<String>,
+    receiver: &mut Receiver<WatchdogRequest>,
 ) -> GenResult<()> {
     loop {
         // Update all users in the database every 30 minutes
-        if let Ok(Some(user)) = timeout(Duration::from_secs(60 * 30), receiver.recv()).await
-            && !user.is_empty()
+        let channel_wait = timeout(Duration::from_secs(60 * 30), receiver.recv()).await;
+        if let Ok(Some(ref request)) = channel_wait
+            && let WatchdogRequest::SingleUser(user) = request
         {
             info!("Updating user {user}");
-            refresh_instances(db, &vec![user], &mut *instances.write().await).await;
+            refresh_instances(db, &vec![user.clone()], &mut *instances.write().await).await;
+        } else if let Ok(Some(WatchdogRequest::KumaRequest(ref request))) = channel_wait {
+            let general_properties = GeneralProperties::load_default_preferences(db).await?;
+            kuma::manage_users(
+                vec![request.clone()],
+                &*instances.read().await,
+                &general_properties,
+            )
+            .await
+            .warn("Api kuma run");
         } else {
             debug!("Updating users");
             let users = UserData::get_all_usernames(db).await?;
@@ -161,8 +178,13 @@ async fn start_stop_instances(
     stop_instances(&instances_to_remove, &mut active_instances);
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await;
     kuma::manage_users(
-        &instances_to_add,
-        &instances_to_remove,
+        vec![
+            (
+                KumaAction::Delete,
+                KumaUserRequest::Users(instances_to_remove),
+            ),
+            (KumaAction::Add, KumaUserRequest::Users(instances_to_add)),
+        ],
         &active_instances,
         &default_preferences,
     )

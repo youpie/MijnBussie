@@ -20,7 +20,7 @@ time = { version = "0.3.44", features = [
     "serde",
 ] }
 migration = { path = "migration" }
-kuma-client = "1.0.0"
+kuma-client = "2.0.0"
 url = "2.5.7"
 icalendar = { version = "0.17.5", features = [
     "serde_json",
@@ -34,15 +34,14 @@ lettre = "0.11.19"
 thiserror = "2.0.17"
 strfmt = "0.2.5"
 rand = "0.9.2"
-serde_with = "3.15.1"
+serde_with = "3.16.0"
 sea-orm = { version = "2.0.0-rc.14", features = [
     "runtime-tokio",
     "sqlx-postgres",
 ] }
 simplestcrypt = "0.2.0"
 base64 = "0.22.1"
-axum = { version = "0.8.6", features = ["json", "query", "macros"] }
-default = "0.1.2"
+axum = { version = "0.8.7", features = ["json", "query", "macros"] }
 strum = "0.27"
 strum_macros = "0.27"
 secrecy = { version = "0.10.3", features = ["serde"] }

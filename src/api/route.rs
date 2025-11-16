@@ -1,16 +1,15 @@
+use crate::GenResult;
 use crate::api::auth::check_api_key;
-use crate::database::variables::GeneralProperties;
 use crate::errors::OptionResult;
 use crate::execution::timer::StartRequest;
-use crate::execution::watchdog::{InstanceMap, RequestResponse};
-use crate::{GenResult, kuma};
+use crate::execution::watchdog::{InstanceMap, RequestResponse, WatchdogRequest};
+use crate::kuma::{KumaAction, KumaUserRequest};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router, middleware};
 use axum_server::tls_rustls::RustlsConfig;
-use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -25,8 +24,7 @@ use tracing::*;
 #[derive(Clone)]
 pub struct ServerConfig {
     map: Arc<RwLock<InstanceMap>>,
-    sender: Sender<String>,
-    database: DatabaseConnection,
+    sender: Sender<WatchdogRequest>,
 }
 
 #[derive(Clone, EnumString, Debug, PartialEq, Serialize, Deserialize)]
@@ -49,23 +47,10 @@ enum Action {
     Calendar,
 }
 
-#[derive(Clone, Copy, EnumString, Debug, PartialEq, Deserialize)]
-enum KumaAction {
-    #[strum(ascii_case_insensitive)]
-    Reset,
-    #[strum(ascii_case_insensitive)]
-    Delete,
-}
-
-pub async fn api(
-    instance_map: Arc<RwLock<InstanceMap>>,
-    watchdog_sender: Sender<String>,
-    db: DatabaseConnection,
-) {
+pub async fn api(instance_map: Arc<RwLock<InstanceMap>>, watchdog_sender: Sender<WatchdogRequest>) {
     let config = ServerConfig {
         map: instance_map,
         sender: watchdog_sender,
-        database: db,
     };
 
     let tls_config = RustlsConfig::from_pem_file(
@@ -101,8 +86,8 @@ async fn refresh_users(
         .sender
         .try_send(
             user_name
-                .and_then(|path| Some(path.to_string()))
-                .unwrap_or_default(),
+                .and_then(|path| Some(WatchdogRequest::SingleUser(path.to_string())))
+                .unwrap_or(WatchdogRequest::AllUser),
         )
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())));
     send.into_response()
@@ -156,51 +141,27 @@ async fn send_request(
     Ok(response)
 }
 
+#[axum::debug_handler]
 async fn handle_kuma_request(
     State(data): State<ServerConfig>,
     Path((action, user_name)): Path<(KumaAction, String)>,
 ) -> impl IntoResponse {
-    match handle_kuma(&data.database, data.map, user_name, action).await {
+    match handle_kuma(data.sender, user_name, action).await {
         Ok(_) => (StatusCode::OK, Json("OK".to_string())),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())),
     }
 }
 
 async fn handle_kuma(
-    db: &DatabaseConnection,
-    instance_map: Arc<RwLock<InstanceMap>>,
+    channel: Sender<WatchdogRequest>,
     user_name: String,
     action: KumaAction,
 ) -> GenResult<()> {
-    let instance_map = &*instance_map.read().await;
-    let mut users_to_remove = vec![];
-    let mut users_to_add = vec![];
-    match action {
-        KumaAction::Reset => {
-            if user_name == "all" {
-                users_to_add = instance_map.keys().cloned().collect();
-                users_to_remove = instance_map.keys().cloned().collect();
-            } else {
-                users_to_add.push(user_name.clone());
-                users_to_remove.push(user_name);
-            }
-        }
-        KumaAction::Delete => {
-            if user_name == "all" {
-                users_to_remove = instance_map.keys().cloned().collect();
-            } else {
-                users_to_remove.push(user_name.clone());
-            }
-        }
-    }
-
-    let general_properties = GeneralProperties::load_default_preferences(db).await?;
-    kuma::manage_users(
-        &users_to_add,
-        &users_to_remove,
-        instance_map,
-        &general_properties,
-    )
-    .await?;
+    let user_name = match user_name {
+        user if user == "all" => KumaUserRequest::All,
+        user => KumaUserRequest::Users(vec![user]),
+    };
+    let kuma_request = (action, user_name);
+    channel.try_send(WatchdogRequest::KumaRequest(kuma_request))?;
     Ok(())
 }

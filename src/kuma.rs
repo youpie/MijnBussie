@@ -6,23 +6,80 @@ use crate::webcom::email::{COLOR_GREEN, COLOR_RED};
 use crate::{APPLICATION_NAME, GenResult};
 use kuma_client::monitor::{MonitorGroup, MonitorType};
 use kuma_client::{Client, monitor, notification};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::str::FromStr;
 use strfmt::strfmt;
+use strum::EnumString;
 use tracing::*;
 use url::Url;
 
+#[derive(Clone)]
+pub enum KumaUserRequest {
+    All,
+    Users(Vec<String>),
+}
+
+#[derive(Clone, Copy, EnumString, Debug, PartialEq, Deserialize)]
+pub enum KumaAction {
+    #[strum(ascii_case_insensitive)]
+    Add,
+    #[strum(ascii_case_insensitive)]
+    Reset,
+    #[strum(ascii_case_insensitive)]
+    Delete,
+}
+
+type UsersToRemove = Vec<String>;
+type UsersToAdd = Vec<String>;
+
+fn handle_user_request(
+    user_request: KumaUserRequest,
+    active_instances: &InstanceMap,
+) -> Vec<String> {
+    match user_request {
+        KumaUserRequest::All => active_instances.keys().cloned().collect(),
+        KumaUserRequest::Users(users) => users,
+    }
+}
+
+fn get_users(
+    actions: Vec<(KumaAction, KumaUserRequest)>,
+    active_instances: &InstanceMap,
+) -> (UsersToAdd, UsersToRemove) {
+    let mut users_to_add = vec![];
+    let mut users_to_remove = vec![];
+    for action in actions {
+        match action.0 {
+            KumaAction::Add => {
+                users_to_add.append(&mut handle_user_request(action.1, active_instances));
+            }
+            KumaAction::Delete => {
+                users_to_remove.append(&mut handle_user_request(action.1, active_instances));
+            }
+            KumaAction::Reset => {
+                users_to_remove
+                    .append(&mut handle_user_request(action.1.clone(), active_instances));
+                users_to_add.append(&mut handle_user_request(action.1, active_instances));
+            }
+        }
+    }
+    (vec![], vec![])
+}
+
 pub async fn manage_users(
-    instances_to_create: &Vec<String>,
-    instances_to_remove: &Vec<String>,
+    actions: Vec<(KumaAction, KumaUserRequest)>,
     active_instances: &InstanceMap,
     properties: &GeneralProperties,
 ) -> GenResult<()> {
-    if instances_to_create.is_empty() && instances_to_remove.is_empty() {
+    let (instances_to_add, instances_to_remove) = get_users(actions, active_instances);
+
+    if instances_to_add.is_empty() && instances_to_remove.is_empty() {
         info!("No kuma instances to manage");
         return Ok(());
     }
+
     let kuma_properties = &properties.kuma_properties;
     debug!("Logging into kuma");
     let client = connect_to_kuma(
@@ -34,7 +91,7 @@ pub async fn manage_users(
     let group_id = create_monitor_group(&client, APPLICATION_NAME).await?;
 
     for instance_name in instances_to_remove {
-        if let Some(instance) = active_instances.get(instance_name) {
+        if let Some(instance) = active_instances.get(&instance_name) {
             let (user, _properties) = instance.user_instance_data.get_data_local().await;
             let monitor_id = get_monitor_id(&user, &client).await;
             if let Some(id) = monitor_id {
@@ -53,8 +110,8 @@ pub async fn manage_users(
         }
     }
 
-    for instance_name in instances_to_create {
-        if let Some(instance) = active_instances.get(instance_name) {
+    for instance_name in instances_to_add {
+        if let Some(instance) = active_instances.get(&instance_name) {
             let (user, local_properties) = instance.user_instance_data.get_data_local().await;
             info!("Creating kuma user: {}", user.user_name);
             let notification_id = create_notification(&user, &local_properties, &client).await?;

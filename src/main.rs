@@ -16,6 +16,7 @@ use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
 use crate::execution::timer::StartRequest;
 use crate::execution::timer::execution_timer;
+use crate::execution::watchdog::WatchdogRequest;
 use crate::execution::watchdog::watchdog;
 use crate::execution::watchdog::{InstanceMap, RequestResponse};
 use crate::health::ApplicationLogbook;
@@ -371,12 +372,12 @@ async fn main() -> GenResult<()> {
     Migrator::up(&db, None).await?;
 
     let (watchdog_tx, mut watchdog_rx) = channel(1);
-    _ = watchdog_tx.try_send("".to_owned());
+    _ = watchdog_tx.try_send(WatchdogRequest::AllUser);
 
     let instances: Arc<RwLock<InstanceMap>> = Arc::new(RwLock::new(HashMap::new()));
 
     tokio::spawn(execution_timer(instances.clone()));
-    tokio::spawn(api(instances.clone(), watchdog_tx, db.clone()));
+    tokio::spawn(api(instances.clone(), watchdog_tx));
 
     watchdog(instances.clone(), &db, &mut watchdog_rx).await?;
 
