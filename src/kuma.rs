@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::str::FromStr;
 use strfmt::strfmt;
-use strum::EnumString;
 use tracing::*;
 use url::Url;
 
@@ -21,13 +20,11 @@ pub enum KumaUserRequest {
     Users(Vec<String>),
 }
 
-#[derive(Clone, Copy, EnumString, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(rename_all(deserialize = "snake_case"))]
 pub enum KumaAction {
-    #[strum(ascii_case_insensitive)]
     Add,
-    #[strum(ascii_case_insensitive)]
     Reset,
-    #[strum(ascii_case_insensitive)]
     Delete,
 }
 
@@ -65,7 +62,7 @@ fn get_users(
             }
         }
     }
-    (vec![], vec![])
+    (users_to_add, users_to_remove)
 }
 
 pub async fn manage_users(
@@ -76,9 +73,15 @@ pub async fn manage_users(
     let (instances_to_add, instances_to_remove) = get_users(actions, active_instances);
 
     if instances_to_add.is_empty() && instances_to_remove.is_empty() {
-        info!("No kuma instances to manage");
+        debug!("No kuma instances to manage");
         return Ok(());
     }
+
+    info!(
+        "Starting Kuma, trying to add {} users, deleting {} users",
+        instances_to_add.len(),
+        instances_to_remove.len()
+    );
 
     let kuma_properties = &properties.kuma_properties;
     debug!("Logging into kuma");

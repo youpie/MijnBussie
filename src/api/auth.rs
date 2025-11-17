@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use axum::{extract::Request, middleware::Next, response::Response};
 use dotenvy::var;
 use reqwest::StatusCode;
+use tracing::error;
 
 pub async fn check_api_key(req: Request, next: Next) -> Result<Response, StatusCode> {
     let params = if let Some(query) = req.uri().query() {
@@ -22,6 +23,7 @@ pub async fn check_api_key(req: Request, next: Next) -> Result<Response, StatusC
         .get("key")
         .is_none_or(|request_key| request_key != &api_key)
     {
+        error!("Denied request for incorrect key");
         return Err(StatusCode::UNAUTHORIZED);
     }
 

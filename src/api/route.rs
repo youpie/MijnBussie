@@ -19,7 +19,7 @@ use strum_macros::EnumString;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::timeout;
-use tracing::*;
+use tracing::info;
 
 #[derive(Clone)]
 pub struct ServerConfig {
@@ -28,22 +28,15 @@ pub struct ServerConfig {
 }
 
 #[derive(Clone, EnumString, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all(deserialize = "snake_case"))]
 enum Action {
-    #[strum(ascii_case_insensitive)]
     Logbook,
-    #[strum(ascii_case_insensitive)]
     IsActive,
-    #[strum(ascii_case_insensitive)]
     Name,
-    #[strum(ascii_case_insensitive)]
     Start,
-    #[strum(ascii_case_insensitive)]
     ExitCode,
-    #[strum(ascii_case_insensitive)]
     UserData,
-    #[strum(ascii_case_insensitive)]
     Welcome,
-    #[strum(ascii_case_insensitive)]
     Calendar,
 }
 
@@ -97,8 +90,6 @@ async fn get_information(
     State(data): State<ServerConfig>,
     Path((user_name, action)): Path<(String, Action)>,
 ) -> impl IntoResponse {
-    info!("Got a request for {user_name}");
-
     match data.map.read().await.get(&user_name) {
         Some(instance) => {
             match send_request(
@@ -114,7 +105,7 @@ async fn get_information(
                 }
             }
         }
-        None => (StatusCode::NOT_FOUND, Json("User not found".to_string())).into_response(),
+        None => (StatusCode::BAD_REQUEST, Json("User not found".to_string())).into_response(),
     }
 }
 
@@ -141,11 +132,11 @@ async fn send_request(
     Ok(response)
 }
 
-#[axum::debug_handler]
 async fn handle_kuma_request(
     State(data): State<ServerConfig>,
     Path((action, user_name)): Path<(KumaAction, String)>,
 ) -> impl IntoResponse {
+    info!("Kuma request");
     match handle_kuma(data.sender, user_name, action).await {
         Ok(_) => (StatusCode::OK, Json("OK".to_string())),
         Err(err) => (StatusCode::INTERNAL_SERVER_ERROR, Json(err.to_string())),

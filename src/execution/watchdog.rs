@@ -112,7 +112,7 @@ pub async fn watchdog(
         if let Ok(Some(ref request)) = channel_wait
             && let WatchdogRequest::SingleUser(user) = request
         {
-            info!("Updating user {user}");
+            info!("Updating user because of request {user}");
             refresh_instances(db, &vec![user.clone()], &mut *instances.write().await).await;
         } else if let Ok(Some(WatchdogRequest::KumaRequest(ref request))) = channel_wait {
             let general_properties = GeneralProperties::load_default_preferences(db).await?;
@@ -127,7 +127,7 @@ pub async fn watchdog(
             debug!("Updating users");
             let users = UserData::get_all_usernames(db).await?;
             start_stop_instances(db, instances.clone(), &users).await?;
-            info!("Users: {users:#?}");
+            debug!("Users: {users:#?}");
         }
     }
 }
@@ -238,11 +238,11 @@ async fn add_instances(
             .flatten()
         {
             Some(user_data) => {
-                info!("Starting user {new_user}");
+                info!("Importing user {new_user}");
                 let new_instance = UserInstance::new(user_data).await;
                 active_instances.insert(new_user.clone(), new_instance);
             }
-            None => warn!("Failed to add user {new_user}, no entry was found"),
+            None => warn!("Failed to add user {new_user}"),
         };
     }
 }

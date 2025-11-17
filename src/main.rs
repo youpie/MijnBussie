@@ -269,7 +269,7 @@ async fn user_instance(
             let start_request = receiver.recv().await.expect("Notification channel closed");
 
             let (user, _properties) = set_data(&instance).await;
-
+            info!("Recieved {start_request:?} request");
             let response = match start_request {
                 StartRequest::Logbook => Some(RequestResponse::Logbook(ApplicationLogbook::load())),
                 StartRequest::Name => Some(RequestResponse::Name(get_set_name(None))),
