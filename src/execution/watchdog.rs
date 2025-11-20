@@ -54,7 +54,7 @@ pub enum RequestResponse {
 pub struct UserInstance {
     pub user_instance_data: UserInstanceData,
     pub thread_handle: JoinHandle<()>,
-    pub request_sender: Sender<StartRequest>,
+    pub request_sender: Arc<Sender<StartRequest>>,
     pub response_receiver: RwLock<Receiver<RequestResponse>>,
     pub execution_time: Time,
 }
@@ -62,6 +62,7 @@ pub struct UserInstance {
 impl UserInstance {
     pub async fn new(user_data: UserInstanceData) -> Self {
         let request_channel = channel(1);
+        let request_sender_arc = Arc::new(request_channel.0);
         let response_channel = channel(1);
         let data_clone = user_data.clone();
         let thread = tokio::spawn(USER_PROPERTIES.scope(
@@ -70,7 +71,12 @@ impl UserInstance {
                 RefCell::new(None),
                 NAME.scope(
                     RefCell::new(None),
-                    user_instance(request_channel.1, response_channel.0, data_clone),
+                    user_instance(
+                        request_channel.1,
+                        response_channel.0,
+                        request_sender_arc.clone(),
+                        data_clone,
+                    ),
                 ),
             ),
         ));
@@ -85,7 +91,7 @@ impl UserInstance {
         Self {
             user_instance_data: user_data,
             thread_handle: thread,
-            request_sender: request_channel.0,
+            request_sender: request_sender_arc,
             response_receiver: RwLock::new(response_channel.1),
             execution_time,
         }

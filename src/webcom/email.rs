@@ -500,6 +500,42 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     Ok(())
 }
 
+pub fn send_incorrect_new_password_mail() -> GenResult<()> {
+    let env = EnvMailVariables::new();
+    if !env.send_failed_signin_mail {
+        return Ok(());
+    }
+
+    let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
+    let new_password_fail_html =
+        fs::read_to_string("./templates/new_password_failed.html").unwrap();
+    let (_user, properties) = get_data();
+    let mailer = load_mailer(&env)?;
+    let name = get_set_name(None);
+    let password_reset_link = &properties.password_reset_link;
+    let password_change_text = create_new_password_form_html(password_reset_link);
+
+    let login_failure_html = strfmt!(&new_password_fail_html,
+        name => get_set_name(None),
+        additional_text => password_change_text,
+        admin_email => env.mail_error_to.clone()
+    )?;
+    let email_body_html = strfmt!(&base_html,
+        content => login_failure_html,
+        banner_color => COLOR_RED,
+        footer => create_footer().unwrap_or_default()
+    )?;
+
+    let email = Message::builder()
+        .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
+        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
+        .subject("Opgegeven Webcomm wachtwoord incorrect")
+        .header(ContentType::TEXT_HTML)
+        .body(email_body_html)?;
+    mailer.send(&email)?;
+    Ok(())
+}
+
 pub fn send_failed_signin_mail(
     error: &IncorrectCredentialsCount,
     first_time: bool,
@@ -531,13 +567,7 @@ pub fn send_failed_signin_mail(
         .clone()
         .is_some_and(|error| error == SignInFailure::IncorrectCredentials)
     {
-        format!("
-<tr>
-    <td>
-        Als je je webcomm wachtwoord hebt veranderd. Vul je nieuwe wachtwoord in met behulp van de volgende link: <br>
-        <a href=\"{password_reset_link}\" style=\"color:#003366; text-decoration:underline;\">{password_reset_link}</a>
-    </td>
-</tr>")
+        create_new_password_form_html(password_reset_link)
     } else {
         String::new()
     };
@@ -565,6 +595,16 @@ pub fn send_failed_signin_mail(
         .body(email_body_html)?;
     mailer.send(&email)?;
     Ok(())
+}
+
+fn create_new_password_form_html(password_reset_link: &str) -> String {
+    format!("
+<tr>
+    <td>
+        Als je je webcomm wachtwoord hebt veranderd. Vul je nieuwe wachtwoord in met behulp van de volgende link: <br>
+        <a href=\"{password_reset_link}\" style=\"color:#003366; text-decoration:underline;\">{password_reset_link}</a>
+    </td>
+</tr>")
 }
 
 pub fn send_sign_in_succesful() -> GenResult<()> {
@@ -626,6 +666,11 @@ mod tests {
     #[test]
     fn send_welcome_mail_test() -> GenResult<()> {
         send_welcome_mail(&PathBuf::new(), true)
+    }
+
+    #[test]
+    fn send_new_password_incorrect_mail() -> GenResult<()> {
+        send_incorrect_new_password_mail()
     }
 
     #[test]

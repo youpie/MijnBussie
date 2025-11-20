@@ -204,6 +204,7 @@ async fn update_name(new_name: String, data_id: i32) -> GenResult<()> {
 /// spawn a new webcom instance
 async fn spawn_webcom_instance(
     start_request: StartRequest,
+    exit_code_sender: Arc<Sender<StartRequest>>,
     thread_store: &mut Option<JoinHandle<FailureType>>,
     last_exit_code: &mut FailureType,
 ) -> bool {
@@ -221,7 +222,10 @@ async fn spawn_webcom_instance(
                 RefCell::new(Some(user)),
                 GENERAL_PROPERTIES.scope(
                     RefCell::new(Some(properties)),
-                    NAME.scope(RefCell::new(None), webcom_instance(start_request)),
+                    NAME.scope(
+                        RefCell::new(None),
+                        webcom_instance(start_request, exit_code_sender),
+                    ),
                 ),
             )
             .with_current_subscriber(),
@@ -242,6 +246,7 @@ Loads the main logic, and retries if it fails
 async fn user_instance(
     receiver: Receiver<StartRequest>,
     sender: Sender<RequestResponse>,
+    meta_sender: Arc<Sender<StartRequest>>,
     instance: UserInstanceData,
 ) {
     let (_user, _properties) = set_data(&instance).await;
@@ -277,9 +282,14 @@ async fn user_instance(
                     &webcom_thread,
                 ))),
                 StartRequest::Api => Some(RequestResponse::Active(
-                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code)
-                        .with_current_subscriber()
-                        .await,
+                    spawn_webcom_instance(
+                        start_request,
+                        meta_sender.clone(),
+                        &mut webcom_thread,
+                        &mut last_exit_code,
+                    )
+                    .with_current_subscriber()
+                    .await,
                 )),
                 StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
                 StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
@@ -289,9 +299,14 @@ async fn user_instance(
                 ))),
                 StartRequest::Calendar => return_calendar_response(),
                 _ => {
-                    spawn_webcom_instance(start_request, &mut webcom_thread, &mut last_exit_code)
-                        .with_current_subscriber()
-                        .await;
+                    spawn_webcom_instance(
+                        start_request,
+                        meta_sender.clone(),
+                        &mut webcom_thread,
+                        &mut last_exit_code,
+                    )
+                    .with_current_subscriber()
+                    .await;
                     None
                 }
             };

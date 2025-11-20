@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::errors::ResultLog;
 use crate::webcom::gebroken_shifts;
@@ -23,6 +24,7 @@ use crate::{
 };
 use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
+use tokio::sync::mpsc::Sender;
 use tracing::*;
 
 // Main program logic that has to run, if it fails it will all be reran.
@@ -134,7 +136,10 @@ async fn create_delete_lock(start_reason: Option<&StartRequest>) -> GenResult<()
     Ok(())
 }
 
-pub async fn webcom_instance(start_reason: StartRequest) -> FailureType {
+pub async fn webcom_instance(
+    start_reason: StartRequest,
+    sender: Arc<Sender<StartRequest>>,
+) -> FailureType {
     let (_user, properties) = get_data();
 
     create_delete_lock(Some(&start_reason))
