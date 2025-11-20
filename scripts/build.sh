@@ -29,12 +29,26 @@ transfer_a() {
     scp "$LOCAL_IMAGES_DIR/mijn_bussie_auth.tar" "$REMOTE_HOST:$REMOTE_IMAGES_DIR/"
 }
 
-remote_reload() {
-    echo "Reloading containers on remote machine..."
+reload_m() {
+    echo "Reloading Mijn Bussie"
     ssh "$REMOTE_HOST" "
-        docker load -i $REMOTE_IMAGES_DIR/mijn_bussie_auth.tar 2>/dev/null || true
-        docker load -i $REMOTE_IMAGES_DIR/mijn_bussie.tar 2>/dev/null || true
+        docker load -i $REMOTE_IMAGES_DIR/mijn_bussie.tar 
+        "
+}
+
+reload_a() {
+    echo "Reloading Auth"
+    ssh "$REMOTE_HOST" "
+        docker load -i $REMOTE_IMAGES_DIR/mijn_bussie_auth.tar
+    "
+}
+
+remote_reload() {
+    echo "Reloading container on remote machine..."
+    ssh -t "$REMOTE_HOST" "
         cd $REMOTE_SERVICE_DIR
+        git pull
+        git submodule update
         sudo docker compose down
         sudo docker compose up -d
     "
@@ -45,11 +59,13 @@ case "$1" in
     -a)
         build_a
         transfer_a
+        reload_m
         remote_reload
         ;;
     -m)
         build_m
         transfer_m
+        reload_m
         remote_reload
         ;;
     "" )
@@ -58,6 +74,8 @@ case "$1" in
         build_a
         transfer_m
         transfer_a
+        reload_a
+        reload_m
         remote_reload
         ;;
     *)
