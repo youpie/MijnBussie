@@ -203,7 +203,7 @@ async fn update_name(new_name: String, data_id: i32) -> GenResult<()> {
 /// get the exit code of the previous join handle and set it
 /// spawn a new webcom instance
 async fn spawn_webcom_instance(
-    start_request: StartRequest,
+    start_request: &StartRequest,
     exit_code_sender: Arc<Sender<StartRequest>>,
     thread_store: &mut Option<JoinHandle<FailureType>>,
     last_exit_code: &mut FailureType,
@@ -224,7 +224,7 @@ async fn spawn_webcom_instance(
                     RefCell::new(Some(properties)),
                     NAME.scope(
                         RefCell::new(None),
-                        webcom_instance(start_request, exit_code_sender),
+                        webcom_instance(start_request.clone(), exit_code_sender),
                     ),
                 ),
             )
@@ -259,68 +259,81 @@ async fn user_instance(
 
     let (non_blocking, _guard) = non_blocking::NonBlocking::new(tracer);
 
-    let subscriber = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .with_writer(non_blocking)
-        .with_env_filter(filter)
-        .finish();
-    async {
-        info!("starting");
-        let mut receiver = receiver;
-        let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
-        let mut last_exit_code = FailureType::default();
-        loop {
-            debug!("Waiting for notification");
-            let start_request = receiver.recv().await.expect("Notification channel closed");
+    let subscriber = Arc::new(
+        tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(non_blocking)
+            .with_env_filter(filter)
+            .finish(),
+    );
+    debug!("starting");
+    let mut receiver = receiver;
+    let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
+    let mut last_exit_code = FailureType::default();
+    loop {
+        debug!("Waiting for notification");
+        let start_request = receiver.recv().await.expect("Notification channel closed");
 
-            let (user, _properties) = set_data(&instance).await;
-            info!("Recieved {start_request:?} request");
-            let response = match start_request {
-                StartRequest::Logbook => Some(RequestResponse::Logbook(ApplicationLogbook::load())),
-                StartRequest::Name => Some(RequestResponse::Name(get_set_name(None))),
-                StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(
-                    &webcom_thread,
-                ))),
-                StartRequest::Api => Some(RequestResponse::Active(
-                    spawn_webcom_instance(
-                        start_request,
-                        meta_sender.clone(),
-                        &mut webcom_thread,
-                        &mut last_exit_code,
-                    )
-                    .with_current_subscriber()
-                    .await,
-                )),
-                StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
-                StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
-                StartRequest::Welcome => Some(RequestResponse::GenResponse(format!(
-                    "{:?}",
-                    email::send_welcome_mail(&get_ical_path(), true)
-                ))),
-                StartRequest::Calendar => return_calendar_response(),
-                _ => {
-                    spawn_webcom_instance(
-                        start_request,
-                        meta_sender.clone(),
-                        &mut webcom_thread,
-                        &mut last_exit_code,
-                    )
-                    .with_current_subscriber()
-                    .await;
-                    None
-                }
-            };
-            if let Some(response) = response {
-                sender.try_send(response).info("Send response");
+        let (user, _properties) = set_data(&instance).await;
+        info!("Recieved {start_request:?} request");
+        let response = match start_request {
+            StartRequest::Logbook => Some(RequestResponse::Logbook(ApplicationLogbook::load())),
+            StartRequest::Name => Some(RequestResponse::Name(get_set_name(None))),
+            StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(
+                &webcom_thread,
+            ))),
+            StartRequest::Api => Some(RequestResponse::Active(
+                spawn_webcom_instance(
+                    &start_request,
+                    meta_sender.clone(),
+                    &mut webcom_thread,
+                    &mut last_exit_code,
+                )
+                .with_subscriber(subscriber.clone())
+                .await,
+            )),
+            StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
+            StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
+            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!(
+                "{:?}",
+                email::send_welcome_mail(&get_ical_path(), true)
+            ))),
+            StartRequest::Calendar => return_calendar_response(),
+            StartRequest::ExecutionFinished(ref exit_code) => {
+                log_exit_code(exit_code, &last_exit_code)
             }
+            _ => {
+                spawn_webcom_instance(
+                    &start_request,
+                    meta_sender.clone(),
+                    &mut webcom_thread,
+                    &mut last_exit_code,
+                )
+                .with_subscriber(subscriber.clone())
+                .await;
+                None
+            }
+        };
+        if let Some(response) = response {
+            sender.try_send(response).info("Send response");
+        }
 
-            if start_request == StartRequest::Single {
-                break;
-            }
+        if start_request == StartRequest::Single {
+            break;
         }
     }
-    .with_subscriber(subscriber)
-    .await;
+}
+
+fn log_exit_code(exit_code: &FailureType, last_exit_code: &FailureType) -> Option<RequestResponse> {
+    let failed_signin_type = &FailureType::SignInFailed(SignInFailure::IncorrectCredentials);
+    if exit_code == failed_signin_type {
+        if last_exit_code != failed_signin_type {
+            warn!("Signin no longer succesful");
+        }
+    } else if exit_code != &FailureType::OK {
+        warn!("Exited with non-OK exit code: {exit_code:?}");
+    }
+    None
 }
 
 fn return_calendar_response() -> Option<RequestResponse> {

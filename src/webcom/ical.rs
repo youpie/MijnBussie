@@ -198,9 +198,9 @@ pub fn save_partial_shift_files(shifts: &Vec<Shift>) -> GenResult<()> {
 }
 
 #[derive(Debug, Default)]
-pub struct PreviousShiftInformation {
-    pub previous_relevant_shifts: Vec<Shift>,
-    pub previous_non_relevant_shifts: Vec<Shift>,
+pub struct PreviousShifts {
+    pub relevant_shifts: Vec<Shift>,
+    pub non_relevant_shifts: Vec<Shift>,
 }
 
 pub fn get_ical_path() -> PathBuf {
@@ -211,7 +211,7 @@ pub fn get_ical_path() -> PathBuf {
     ical_path
 }
 
-pub fn get_previous_shifts() -> GenResult<Option<PreviousShiftInformation>> {
+pub fn get_previous_shifts() -> GenResult<Option<PreviousShifts>> {
     let relevant_events_exist = create_path(RELEVANT_EVENTS_PATH).exists();
     let non_relevant_events_exist = create_path(NON_RELEVANT_EVENTS_PATH).exists();
     let main_ical_path = get_ical_path();
@@ -253,9 +253,9 @@ pub fn get_previous_shifts() -> GenResult<Option<PreviousShiftInformation>> {
             previous_relevant_shifts.len(),
             previous_non_relevant_shifts.len()
         );
-        Ok(Some(PreviousShiftInformation {
-            previous_relevant_shifts,
-            previous_non_relevant_shifts,
+        Ok(Some(PreviousShifts {
+            relevant_shifts: previous_relevant_shifts,
+            non_relevant_shifts: previous_non_relevant_shifts,
         }))
     } else {
         info!("Calendar regeneration NOT needed");
@@ -272,9 +272,9 @@ pub fn get_previous_shifts() -> GenResult<Option<PreviousShiftInformation>> {
             .collect();
         let previous_non_relevant_shifts: Vec<Shift> =
             serde_json::from_str(&non_relevant_shifts_str)?;
-        Ok(Some(PreviousShiftInformation {
-            previous_relevant_shifts,
-            previous_non_relevant_shifts,
+        Ok(Some(PreviousShifts {
+            relevant_shifts: previous_relevant_shifts,
+            non_relevant_shifts: previous_non_relevant_shifts,
         }))
     }
 }
@@ -290,7 +290,7 @@ fn create_event(shift: &Shift, metadata: Option<&&Shift>) -> Event {
         String::new()
     };
     Event::new()
-        .summary(&format!("Dienst - {}{cut_off_end_time}", shift.number))
+        .summary(&format!("{}{cut_off_end_time}", shift.number))
         .description(&format!(
             "Dienstsoort • {}
 Duur • {} uur {} minuten

@@ -26,6 +26,7 @@ use tokio::{
     time::timeout,
 };
 use tracing::*;
+use tracing_futures::Instrument;
 
 #[derive(Debug, PartialEq)]
 enum InstanceState {
@@ -61,25 +62,30 @@ pub struct UserInstance {
 
 impl UserInstance {
     pub async fn new(user_data: UserInstanceData) -> Self {
+        let user_name = user_data.user_data.read().await.user_name.clone();
+        let span = warn_span!("User", user_name);
         let request_channel = channel(1);
         let request_sender_arc = Arc::new(request_channel.0);
         let response_channel = channel(1);
         let data_clone = user_data.clone();
-        let thread = tokio::spawn(USER_PROPERTIES.scope(
-            RefCell::new(None),
-            GENERAL_PROPERTIES.scope(
+        let thread = tokio::spawn(
+            USER_PROPERTIES.scope(
                 RefCell::new(None),
-                NAME.scope(
+                GENERAL_PROPERTIES.scope(
                     RefCell::new(None),
-                    user_instance(
-                        request_channel.1,
-                        response_channel.0,
-                        request_sender_arc.clone(),
-                        data_clone,
+                    NAME.scope(
+                        RefCell::new(None),
+                        user_instance(
+                            request_channel.1,
+                            response_channel.0,
+                            request_sender_arc.clone(),
+                            data_clone,
+                        )
+                        .instrument(span),
                     ),
                 ),
             ),
-        ));
+        );
         let execution_time = calculate_next_execution_time(user_data.user_data.clone(), true).await;
         info!(
             "Executing user {} in {} minutes",

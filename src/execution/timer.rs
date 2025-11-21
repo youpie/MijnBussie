@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
-use crate::{GenResult, database::variables::UserData, execution::watchdog::InstanceMap};
+use crate::{
+    GenResult, database::variables::UserData, errors::FailureType, execution::watchdog::InstanceMap,
+};
 use serde::Serialize;
 use time::{Duration, OffsetDateTime, Time};
 use tokio::{sync::RwLock, time::sleep};
 use tracing::*;
 
 #[allow(dead_code)]
-#[derive(PartialEq, Serialize, Copy, Clone, Debug)]
+#[derive(PartialEq, Serialize, Clone, Debug)]
 pub enum StartRequest {
     Timer,
     Api,
@@ -20,6 +22,9 @@ pub enum StartRequest {
     UserData,
     Welcome,
     Calendar,
+
+    // Webcom request
+    ExecutionFinished(FailureType),
 }
 
 pub fn get_system_time() -> Time {
@@ -73,7 +78,7 @@ pub async fn execution_timer(instances: Arc<RwLock<InstanceMap>>) -> GenResult<(
         for instance in instances.iter_mut() {
             if instance.1.execution_time <= current_system_time {
                 let user_name = instance.0;
-                info!("Starting instance {user_name}");
+                debug!("Starting instance {user_name}");
                 _ = instance.1.request_sender.try_send(StartRequest::Timer);
                 instance.1.execution_time = calculate_next_execution_time(
                     instance.1.user_instance_data.user_data.clone(),

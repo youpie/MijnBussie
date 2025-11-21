@@ -3,17 +3,18 @@ use std::sync::Arc;
 
 use crate::errors::ResultLog;
 use crate::webcom::gebroken_shifts;
+use crate::webcom::shift::Shift;
 use crate::{
     FALLBACK_URL, GenError, GenResult, MAIN_URL, create_path,
-    errors::{FailureType, IncorrectCredentialsCount, SignInFailure},
+    errors::{FailureType, IncorrectCredentialsCount},
     execution::timer::StartRequest,
     get_data, get_set_name,
     health::{ApplicationLogbook, send_heartbeat, update_calendar_exit_code},
     webcom::{
         email::{self, send_errors, send_welcome_mail},
         ical::{
-            self, NON_RELEVANT_EVENTS_PATH, PreviousShiftInformation, RELEVANT_EVENTS_PATH,
-            create_ical, get_ical_path, get_previous_shifts, split_relevant_shifts,
+            self, NON_RELEVANT_EVENTS_PATH, RELEVANT_EVENTS_PATH, create_ical, get_ical_path,
+            get_previous_shifts, split_relevant_shifts,
         },
         parsing::{
             load_calendar, load_current_month_shifts, load_next_month_shifts,
@@ -26,6 +27,17 @@ use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
 use tokio::sync::mpsc::Sender;
 use tracing::*;
+
+async fn init_shifts(driver: &WebDriver) -> GenResult<(Vec<Shift>, Vec<Shift>)> {
+    info!(
+        "Existing calendar file not found, adding two extra months of shifts and removing partial calendars"
+    );
+    _ = fs::remove_file(PathBuf::from(NON_RELEVANT_EVENTS_PATH)).await;
+    _ = fs::remove_file(PathBuf::from(RELEVANT_EVENTS_PATH)).await;
+    let found_shifts = load_previous_month_shifts(&driver, 2).await?;
+    debug!("Found a total of {} shifts", found_shifts.len());
+    Ok(split_relevant_shifts(found_shifts))
+}
 
 // Main program logic that has to run, if it fails it will all be reran.
 async fn main_program(
@@ -53,24 +65,14 @@ async fn main_program(
     };
     load_calendar(&driver, personeelsnummer, password).await?;
     wait_until_loaded(&driver).await?;
+
     let mut new_shifts = load_current_month_shifts(&driver, logbook).await?;
     let mut non_relevant_shifts = vec![];
     let ical_path = get_ical_path();
     if !ical_path.exists() {
-        info!(
-            "Existing calendar file not found, adding two extra months of shifts and removing partial calendars"
-        );
-        _ = async || -> GenResult<()> {
-            fs::remove_file(PathBuf::from(NON_RELEVANT_EVENTS_PATH)).await?;
-            fs::remove_file(PathBuf::from(RELEVANT_EVENTS_PATH)).await?;
-            Ok(())
-        }()
-        .await;
-        let found_shifts = load_previous_month_shifts(&driver, 2).await?;
-        debug!("Found a total of {} shifts", found_shifts.len());
-        let mut found_shifts_split = split_relevant_shifts(found_shifts);
-        new_shifts.append(&mut found_shifts_split.0);
-        non_relevant_shifts.append(&mut found_shifts_split.1);
+        let mut initial_shifts = init_shifts(driver).await?;
+        new_shifts.append(&mut initial_shifts.0);
+        non_relevant_shifts.append(&mut initial_shifts.1);
         debug!(
             "Got {} relevant and {} non-relevant events",
             new_shifts.len(),
@@ -83,39 +85,37 @@ async fn main_program(
     new_shifts.append(&mut load_next_month_shifts(&driver, logbook).await?);
     info!("Found {} shifts", new_shifts.len());
     // If getting previous shift information failed, just create an empty one. Because it will cause a new calendar to be created
-    let mut previous_shifts_information = || -> Option<PreviousShiftInformation> {
-        Some(
-            get_previous_shifts()
-                .warn_owned("Getting previous shift information")
-                .ok()??,
-        )
-    }()
-    .unwrap_or_default();
-    non_relevant_shifts.append(&mut previous_shifts_information.previous_non_relevant_shifts);
-    let previous_shifts = previous_shifts_information.previous_relevant_shifts;
+    let mut previous_shifts = get_previous_shifts()
+        .warn_owned("Getting previous shift information")
+        .ok()
+        .flatten()
+        .unwrap_or_default();
+    non_relevant_shifts.append(&mut previous_shifts.non_relevant_shifts);
+    let previous_relevant_shifts = previous_shifts.relevant_shifts;
+
     // The main send email function will return the broken shifts that are new or have changed.
-    // This is because the send email functions uses the previous shifts and scanns for new shifts
-    // write("./shifts.json",serde_json::to_string_pretty(&new_shifts).unwrap());
-    let relevant_shifts = match email::send_emails(new_shifts, previous_shifts) {
+    // This is because the send email functions uses the previous shifts and scans for new shifts
+    let mut relevant_shifts = match email::send_emails(new_shifts, previous_relevant_shifts) {
         Ok(shifts) => shifts,
         Err(err) => return Err(err),
     };
-    let mut all_shifts = relevant_shifts;
+
     let non_relevant_shift_len = non_relevant_shifts.len();
-    all_shifts.append(&mut non_relevant_shifts);
-    let all_shifts = gebroken_shifts::load_broken_shift_information(&driver, &all_shifts).await?; // Replace the shifts with the newly created list of broken shifts
-    ical::save_partial_shift_files(&all_shifts).error("Saving partial shift files");
-    let broken_split_shifts = gebroken_shifts::split_broken_shifts(&all_shifts);
+    relevant_shifts.append(&mut non_relevant_shifts);
+    relevant_shifts =
+        gebroken_shifts::load_broken_shift_information(&driver, &relevant_shifts).await?; // Replace the shifts with the newly created list of broken shifts
+    ical::save_partial_shift_files(&relevant_shifts).error("Saving partial shift files");
+    let broken_split_shifts = gebroken_shifts::split_broken_shifts(&relevant_shifts);
     let midnight_stopped_shifts = gebroken_shifts::stop_shift_at_midnight(&broken_split_shifts)?;
     let mut night_split_shifts = gebroken_shifts::split_night_shift(&midnight_stopped_shifts)?;
     night_split_shifts.sort_by_key(|shift| shift.magic_number);
     night_split_shifts.dedup();
     debug!("Saving {} shifts", night_split_shifts.len());
-    let calendar = create_ical(&night_split_shifts, &all_shifts, &logbook.state);
+    let calendar = create_ical(&night_split_shifts, &relevant_shifts, &logbook.state)?;
     send_welcome_mail(&ical_path, false)?;
     info!("Writing to: {:?}", &ical_path);
-    write(ical_path, calendar?.as_bytes()).await?;
-    logbook.generate_shift_statistics(&all_shifts, non_relevant_shift_len);
+    write(ical_path, calendar.as_bytes()).await?;
+    logbook.generate_shift_statistics(&relevant_shifts, non_relevant_shift_len);
     Ok(())
 }
 
@@ -136,6 +136,16 @@ async fn create_delete_lock(start_reason: Option<&StartRequest>) -> GenResult<()
     Ok(())
 }
 
+#[derive(PartialEq)]
+pub enum ResumeReason {
+    Ok,
+    NewPassword,
+
+    // Do not resume on these ones
+    IncorrectCredentials,
+    SigninFailureReduce,
+}
+
 pub async fn webcom_instance(
     start_reason: StartRequest,
     sender: Arc<Sender<StartRequest>>,
@@ -150,6 +160,31 @@ pub async fn webcom_instance(
     let mut logbook = ApplicationLogbook::load();
     let mut failure_counter = IncorrectCredentialsCount::load();
 
+    let mut current_exit_code = FailureType::default();
+    let previous_exit_code = logbook.clone().state;
+    let mut running_errors: Vec<GenError> = vec![];
+
+    let mut allow_execution = true;
+    let mut retry_count: usize = 0;
+    let max_retry_count: usize = properties.execution_retry_count as usize;
+
+    // Check if the program is allowed to run, or not due to failed sign-in
+    let resume_reason: ResumeReason = failure_counter.sign_in_failed_check();
+    if start_reason != StartRequest::Force {
+        if matches!(
+            resume_reason,
+            ResumeReason::IncorrectCredentials | ResumeReason::SigninFailureReduce
+        ) {
+            allow_execution = false;
+            // If there is a reason to not resume, it is a sign in failure reason, so you can safely assume the failure counter error is set
+            current_exit_code =
+                FailureType::SignInFailed(failure_counter.error.clone().unwrap_or_default());
+        }
+    } else {
+        info!("Force resuming execution");
+    }
+
+    // Load the driver, do an early return if it fails
     let driver = match get_driver(&mut logbook).await {
         Ok(driver) => driver,
         Err(err) => {
@@ -157,39 +192,21 @@ pub async fn webcom_instance(
             logbook
                 .save(&FailureType::GeckoEngine)
                 .warn("Saving gecko driver error");
+            _ = sender.try_send(StartRequest::ExecutionFinished(FailureType::GeckoEngine));
             return FailureType::GeckoEngine;
         }
     };
 
-    let mut current_exit_code = FailureType::default();
-    let previous_exit_code = logbook.clone().state;
-    let mut running_errors: Vec<GenError> = vec![];
-
-    let mut retry_count: usize = 0;
-    let max_retry_count: usize = properties.execution_retry_count as usize;
-
-    // Check if the program is allowed to run, or not due to failed sign-in
-    let sign_in_check: Option<SignInFailure> =
-        failure_counter.sign_in_failed_check().unwrap_or(None);
-    if start_reason != StartRequest::Force {
-        if let Some(failure) = sign_in_check {
-            retry_count = max_retry_count;
-            current_exit_code = FailureType::SignInFailed(failure);
-        }
-    } else {
-        info!("Force resuming execution");
-    }
-
-    while retry_count < max_retry_count {
+    while retry_count < max_retry_count && allow_execution {
         match main_program(&driver, retry_count, &mut logbook)
             .await
             .warn_owned("Main Program")
         {
             Ok(()) => {
                 failure_counter
-                    .update_signin_failure(false, None)
+                    .update_signin_failure(false, &resume_reason, None)
                     .warn("Updating signin failure");
-                retry_count = max_retry_count;
+                allow_execution = false;
             }
             Err(err) if err.downcast_ref::<FailureType>().is_some() => {
                 let webcom_error = err
@@ -198,14 +215,18 @@ pub async fn webcom_instance(
                     .unwrap_or_default();
                 match webcom_error.clone() {
                     FailureType::SignInFailed(signin_failure) => {
-                        retry_count = max_retry_count;
+                        allow_execution = false;
                         failure_counter
-                            .update_signin_failure(true, Some(signin_failure.clone()))
+                            .update_signin_failure(
+                                true,
+                                &resume_reason,
+                                Some(signin_failure.clone()),
+                            )
                             .warn("Updating signin failure 2");
                         current_exit_code = webcom_error;
                     }
                     FailureType::ConnectError => {
-                        retry_count = max_retry_count;
+                        allow_execution = false;
                         current_exit_code = FailureType::ConnectError;
                     }
                     _ => {
@@ -219,6 +240,7 @@ pub async fn webcom_instance(
         };
         retry_count += 1;
     }
+
     if running_errors.is_empty() {
         info!("Alles is in een keer goed gegaan, jippie!");
     } else if running_errors.len() < max_retry_count {
@@ -251,5 +273,6 @@ pub async fn webcom_instance(
     }
 
     create_delete_lock(None).await.warn("Removing Lock file");
+    _ = sender.try_send(StartRequest::ExecutionFinished(current_exit_code.clone()));
     current_exit_code
 }

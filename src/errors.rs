@@ -1,4 +1,7 @@
-use crate::{GenResult, create_path, get_data, set_strict_file_permissions, webcom::email};
+use crate::{
+    GenResult, create_path, get_data, set_strict_file_permissions,
+    webcom::{email, webcom::ResumeReason},
+};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -134,26 +137,27 @@ impl IncorrectCredentialsCount {
         Ok(hasher.finish())
     }
 
-    // If returning None, continue execution
-    pub fn sign_in_failed_check(&mut self) -> GenResult<Option<SignInFailure>> {
+    pub fn sign_in_failed_check(&mut self) -> ResumeReason {
         let (_user, properties) = get_data();
         let resend_error_mail_count = properties.signin_fail_mail_reduce;
         let sign_in_attempt_reduce = properties.signin_fail_execution_reduce;
-        let return_value: Option<SignInFailure>;
+        let return_value: ResumeReason;
+
         if let Some(previous_password_hash) = self.previous_password_hash
             && let Ok(current_password_hash) = Self::get_password_hash()
             && previous_password_hash != current_password_hash
         {
             info!("Password hash has changed, resuming execution");
-            return Ok(None);
+            return ResumeReason::NewPassword;
         }
+
         self.retry_count += 1;
-        // else check if retry counter == reduce_ammount, if not, stop running
-        // If incorrect credentials. Never execute unless the password has has changes
+        // check if retry counter == reduce_ammount, if not, stop running
+        // If incorrect credentials. Never execute unless the password has has changed
         return_value = match self.error.as_ref() {
             Some(SignInFailure::IncorrectCredentials) => {
                 info!("Permanently Skipping execution due to incorrect credentials");
-                self.error.clone()
+                ResumeReason::IncorrectCredentials
             }
             _ => {
                 if self.retry_count % sign_in_attempt_reduce == 0 {
@@ -162,27 +166,36 @@ impl IncorrectCredentialsCount {
                         self.retry_count
                     );
                     self.retry_count -= 1;
-                    None
+                    ResumeReason::Ok
                 } else {
-                    self.error.clone()
+                    ResumeReason::SigninFailureReduce
                 }
             }
         };
 
         if self.retry_count % resend_error_mail_count == 0 && self.error.is_some() {
-            email::send_failed_signin_mail(&self, false)?;
+            email::send_failed_signin_mail(&self, false).warn("Sending failed signin email");
         }
-        self.save()?;
-        Ok(return_value)
+        self.save()
+            .warn("Saving incorrect credentials count in function");
+        return_value
     }
 
     pub fn update_signin_failure(
         &mut self,
         failed: bool,
+        resume_reason: &ResumeReason,
         failure_type: Option<SignInFailure>,
     ) -> GenResult<()> {
+        // If the resume reason is because of a new password
+        // But the execution once again failed, send a special type of email
+        if failure_type == Some(SignInFailure::IncorrectCredentials)
+            && resume_reason == &ResumeReason::NewPassword
+        {
+            email::send_incorrect_new_password_mail()?;
+        }
+
         if let Ok(current_password_hash) = Self::get_password_hash() {
-            debug!("Got current password hash: {current_password_hash}");
             self.previous_password_hash = Some(current_password_hash);
         }
         // if failed == true, set increment counter and set error
@@ -202,6 +215,7 @@ impl IncorrectCredentialsCount {
             self.retry_count = 0;
             self.error = None;
         }
+
         self.save()?;
         Ok(())
     }
