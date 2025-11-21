@@ -10,7 +10,9 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::read_to_string;
 use std::str::FromStr;
+use std::time::Duration;
 use strfmt::strfmt;
+use tokio::time::sleep;
 use tracing::*;
 use url::Url;
 
@@ -119,7 +121,8 @@ pub async fn manage_users(
             info!("Creating kuma user: {}", user.user_name);
             let notification_id = create_notification(&user, &local_properties, &client).await?;
             info!("Creating monitor {}", user.user_name);
-            _ = create_monitor(&user, &local_properties, &client, notification_id, group_id)
+            sleep(Duration::from_millis(100)).await;
+            create_monitor(&user, &local_properties, &client, notification_id, group_id)
                 .await
                 .warn("Creating monitor");
         }

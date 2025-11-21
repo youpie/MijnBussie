@@ -5,7 +5,6 @@ use std::{
     time::Duration,
 };
 
-use crate::health::ApplicationLogbook;
 use crate::{
     GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
     database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
@@ -14,6 +13,7 @@ use crate::{
 };
 use crate::{errors::FailureType, kuma::KumaUserRequest};
 use crate::{errors::ResultLog, kuma::KumaAction};
+use crate::{health::ApplicationLogbook, webcom::deletion::StandingInformation};
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use time::Time;
@@ -50,6 +50,7 @@ pub enum RequestResponse {
     ExitCode(FailureType),
     UserData(UserData),
     GenResponse(String),
+    InstanceStanding(StandingInformation),
 }
 
 pub struct UserInstance {
@@ -125,7 +126,13 @@ pub async fn watchdog(
             && let WatchdogRequest::SingleUser(user) = request
         {
             info!("Updating user because of request {user}");
-            refresh_instances(db, &vec![user.clone()], &mut *instances.write().await).await;
+            update_individual_user(
+                db,
+                vec![user.clone()],
+                &mut *instances.clone().write().await,
+            )
+            .await
+            .warn("deleting individual user");
         } else if let Ok(Some(WatchdogRequest::KumaRequest(ref request))) = channel_wait {
             let general_properties = GeneralProperties::load_default_preferences(db).await?;
             kuma::manage_users(
@@ -164,21 +171,8 @@ async fn start_stop_instances(
         };
     }
     // Load the default preferences and write them to the global variable
-    let default_preferences =
-        // If the preferences are already set, only replace the value inside the RwLock
-        if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
-            let default_preferences = GeneralProperties::load_default_preferences(db).await?;
-            *default_properties.write().await = default_preferences.clone();
-            default_preferences
-        // If the preferences are not yet set, create a new Arc and RwLock
-        } else {
-            let default_preferences = GeneralProperties::load_default_preferences(db).await?;
-            DEFAULT_PROPERTIES
-                .write()
-                .await
-                .replace(Arc::new(RwLock::new(default_preferences.clone())));
-            default_preferences
-        };
+    let default_preferences = get_default_preferences(db).await?;
+    // If the preferences are already set, only replace the value inside the RwLock
 
     let instances_to_remove =
         get_equal_instances(InstanceState::Remove, &instances_state, &active_instances);
@@ -205,11 +199,67 @@ async fn start_stop_instances(
     Ok(())
 }
 
+async fn get_default_preferences(db: &DatabaseConnection) -> GenResult<GeneralProperties> {
+    if let Some(default_properties) = DEFAULT_PROPERTIES.write().await.clone() {
+        let default_preferences = GeneralProperties::load_default_preferences(db).await?;
+        *default_properties.write().await = default_preferences.clone();
+        Ok(default_preferences)
+    // If the preferences are not yet set, create a new Arc and RwLock
+    } else {
+        let default_preferences = GeneralProperties::load_default_preferences(db).await?;
+        DEFAULT_PROPERTIES
+            .write()
+            .await
+            .replace(Arc::new(RwLock::new(default_preferences.clone())));
+        Ok(default_preferences)
+    }
+}
+
+async fn update_individual_user(
+    db: &DatabaseConnection,
+    user_names: Vec<String>,
+    active_instances: &mut InstanceMap,
+) -> GenResult<()> {
+    let mut instances_to_add = vec![];
+    let mut instances_to_refresh = vec![];
+    let mut instances_to_remove = vec![];
+
+    let default_preferences = get_default_preferences(db).await?;
+
+    for user in user_names {
+        if !active_instances.contains_key(&user) {
+            instances_to_add.push(user);
+        } else if UserData::get_from_username(db, &user).await?.is_none() {
+            instances_to_remove.push(user);
+        } else {
+            instances_to_refresh.push(user);
+        }
+    }
+    add_instances(db, &instances_to_add, active_instances).await;
+    stop_instances(&instances_to_remove, active_instances);
+    refresh_instances(db, &instances_to_refresh, active_instances).await;
+    kuma::manage_users(
+        vec![
+            (
+                KumaAction::Delete,
+                KumaUserRequest::Users(instances_to_remove),
+            ),
+            (KumaAction::Add, KumaUserRequest::Users(instances_to_add)),
+        ],
+        active_instances,
+        &default_preferences,
+    )
+    .await
+    .warn("Kuma run individual");
+    Ok(())
+}
+
 fn stop_instances(instances_to_stop: &Vec<String>, active_instances: &mut InstanceMap) {
     for instance_name in instances_to_stop {
         if let Some(instance) = active_instances.get(instance_name) {
             instance.thread_handle.abort_handle().abort();
         }
+        warn!("Deleting instance: {instance_name}");
         active_instances.remove(instance_name);
     }
 }
@@ -219,6 +269,7 @@ async fn refresh_instances(
     instances_to_refresh: &Vec<String>,
     active_instances: &mut InstanceMap,
 ) {
+    let mut instances_to_add = vec![];
     for insance_name in instances_to_refresh {
         if let Some(instance) = active_instances.get_mut(insance_name) {
             instance
@@ -226,7 +277,12 @@ async fn refresh_instances(
                 .update_user(db)
                 .await
                 .warn("Updating User");
+        } else {
+            instances_to_add.push(insance_name.clone());
         }
+    }
+    if !instances_to_add.is_empty() {
+        add_instances(db, &instances_to_add, active_instances).await;
     }
 }
 

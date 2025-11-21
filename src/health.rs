@@ -88,6 +88,7 @@ impl ApplicationLogbook {
         write(path, serde_json::to_string_pretty(&self)?)?;
         Ok(())
     }
+
     fn create_path() -> PathBuf {
         create_path("logbook.json")
     }

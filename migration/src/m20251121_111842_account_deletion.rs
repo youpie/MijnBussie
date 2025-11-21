@@ -49,6 +49,7 @@ impl MigrationTrait for Migration {
                             UserProperties::AutoDeleteAccount,
                             ColumnType::Boolean,
                         )
+                        .not_null()
                         .default(true),
                     )
                     .to_owned(),

@@ -175,10 +175,14 @@ pub async fn webcom_instance(
             resume_reason,
             ResumeReason::IncorrectCredentials | ResumeReason::SigninFailureReduce
         ) {
-            allow_execution = false;
             // If there is a reason to not resume, it is a sign in failure reason, so you can safely assume the failure counter error is set
             current_exit_code =
                 FailureType::SignInFailed(failure_counter.error.clone().unwrap_or_default());
+            clean_execution(&mut logbook, &current_exit_code, sender)
+                .await
+                .warn("cleaning after failed signin");
+
+            return current_exit_code;
         }
     } else {
         info!("Force resuming execution");
@@ -189,11 +193,11 @@ pub async fn webcom_instance(
         Ok(driver) => driver,
         Err(err) => {
             error!("Failed to get driver! error: {}", err.to_string());
-            logbook
-                .save(&FailureType::GeckoEngine)
-                .warn("Saving gecko driver error");
-            _ = sender.try_send(StartRequest::ExecutionFinished(FailureType::GeckoEngine));
-            return FailureType::GeckoEngine;
+            current_exit_code = FailureType::GeckoEngine;
+            clean_execution(&mut logbook, &current_exit_code, sender)
+                .await
+                .warn("cleaning after gecko");
+            return current_exit_code;
         }
     };
 
@@ -261,10 +265,6 @@ pub async fn webcom_instance(
             .warn("Sending Heartbeat in loop");
     }
 
-    logbook
-        .save(&current_exit_code)
-        .warn("Saving logbook in loop");
-
     // Update the exit code in the calendar if it is not equal to the previous value
     if previous_exit_code != current_exit_code {
         warn!("Previous exit code was different than current, need to update");
@@ -272,7 +272,21 @@ pub async fn webcom_instance(
             .warn("Updating calendar exit code");
     }
 
-    create_delete_lock(None).await.warn("Removing Lock file");
-    _ = sender.try_send(StartRequest::ExecutionFinished(current_exit_code.clone()));
+    clean_execution(&mut logbook, &current_exit_code, sender)
+        .await
+        .warn("cleaning at end");
+
     current_exit_code
+}
+
+async fn clean_execution(
+    logbook: &mut ApplicationLogbook,
+    exit_code: &FailureType,
+    sender: Arc<Sender<StartRequest>>,
+) -> GenResult<()> {
+    logbook.save(exit_code).warn("Saving logbook in loop");
+    create_delete_lock(None).await?;
+    sender.try_send(StartRequest::ExecutionFinished(exit_code.clone()))?;
+
+    Ok(())
 }

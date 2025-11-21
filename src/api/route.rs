@@ -38,6 +38,8 @@ enum Action {
     UserData,
     Welcome,
     Calendar,
+    Delete,
+    Standing,
 }
 
 pub async fn api(instance_map: Arc<RwLock<InstanceMap>>, watchdog_sender: Sender<WatchdogRequest>) {
@@ -123,6 +125,8 @@ async fn send_request(
         Action::UserData => StartRequest::UserData,
         Action::Welcome => StartRequest::Welcome,
         Action::Calendar => StartRequest::Calendar,
+        Action::Delete => StartRequest::Delete,
+        Action::Standing => StartRequest::Standing,
     };
     request_sender.try_send(start_request)?;
     let response = timeout(Duration::from_secs(2), response_receiver.recv())

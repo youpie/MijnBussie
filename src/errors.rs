@@ -28,6 +28,21 @@ pub enum SignInFailure {
     Unknown,
 }
 
+impl SignInFailure {
+    pub fn to_string(failure: Option<&Self>) -> String {
+        match failure {
+            Some(SignInFailure::IncorrectCredentials) => {
+                "Incorrecte inloggegevens, heb je misschien je wachtwoord veranderd?"
+            }
+            Some(SignInFailure::TooManyTries) => "Te veel incorrecte inlogpogingen…",
+            Some(SignInFailure::WebcomDown) => "Webcom heeft op dit moment een storing",
+            Some(SignInFailure::Other(fault)) => fault,
+            _ => "Een onbekende fout...",
+        }
+        .to_owned()
+    }
+}
+
 #[derive(Debug, Error, PartialEq, Clone, Serialize, Deserialize, Default)]
 pub enum FailureType {
     #[error("Mijn Bussie was niet in staat na meerdere pogingen diensten correct in te laden")]
@@ -159,7 +174,7 @@ impl IncorrectCredentialsCount {
                 info!("Permanently Skipping execution due to incorrect credentials");
                 ResumeReason::IncorrectCredentials
             }
-            _ => {
+            Some(_) => {
                 if self.retry_count % sign_in_attempt_reduce == 0 {
                     warn!(
                         "Continuing execution with sign in error, reduce val: {sign_in_attempt_reduce}, current count {}",
@@ -171,6 +186,7 @@ impl IncorrectCredentialsCount {
                     ResumeReason::SigninFailureReduce
                 }
             }
+            _ => ResumeReason::Ok,
         };
 
         if self.retry_count % resend_error_mail_count == 0 && self.error.is_some() {

@@ -18,7 +18,7 @@ pub struct Model {
     pub split_night_shift: bool,
     pub stop_midnight_shift: bool,
     pub execution_minute: i32,
-    pub auto_delete_account: Option<bool>,
+    pub auto_delete_account: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

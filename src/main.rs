@@ -21,6 +21,7 @@ use crate::execution::watchdog::WatchdogRequest;
 use crate::execution::watchdog::watchdog;
 use crate::execution::watchdog::{InstanceMap, RequestResponse};
 use crate::health::ApplicationLogbook;
+use crate::webcom::deletion::StandingInformation;
 use crate::webcom::deletion::check_instance_standing;
 use crate::webcom::deletion::delete_account;
 use crate::webcom::deletion::update_instance_timestamps;
@@ -49,6 +50,7 @@ use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use time::macros::format_description;
 use tokio::runtime::Handle;
 use tokio::sync::RwLock;
@@ -56,6 +58,7 @@ use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio::task_local;
+use tokio::time::sleep;
 use tracing::instrument::WithSubscriber;
 use tracing::level_filters::LevelFilter;
 use tracing::*;
@@ -166,7 +169,7 @@ pub fn get_set_name_local(user: &UserData, set_new_name: Option<String>) -> Stri
                 user.name
                     .as_ref()
                     .and_then(|secret| Some(secret.0.expose_secret()))
-                    .unwrap_or("Onbekend"),
+                    .unwrap_or(&user.user_name),
             ),
         )
         .to_owned();
@@ -306,19 +309,26 @@ async fn user_instance(
             )),
             StartRequest::Calendar => return_calendar_response(),
             StartRequest::ExecutionFinished(ref exit_code) => {
-                update_instance_timestamps(exit_code)
+                update_instance_timestamps(exit_code, instance.user_data.clone())
                     .await
                     .warn("Updating instance timestamps");
-                check_instance_standing()
-                    .await
-                    .warn("Checking instance stance");
+                check_instance_standing().await;
                 log_exit_code(exit_code, &last_exit_code)
             }
             StartRequest::Delete => {
                 instance_active = false;
+                _ = webcom_thread.as_ref().is_some_and(|thread| {
+                    thread.abort();
+                    true
+                });
                 Some(RequestResponse::GenResponse(
-                    delete_account().await.to_string(),
+                    delete_account(user.id, email::DeletedReason::Manual)
+                        .await
+                        .to_string(),
                 ))
+            }
+            StartRequest::Standing => {
+                Some(RequestResponse::InstanceStanding(StandingInformation::get()))
             }
             _ => {
                 spawn_webcom_instance(
@@ -341,6 +351,8 @@ async fn user_instance(
         }
     }
     warn!("Killing instance, bye👋");
+    sleep(Duration::from_hours(12)).await;
+    warn!("Manually killing instance after waiting");
 }
 
 fn log_exit_code(exit_code: &FailureType, last_exit_code: &FailureType) -> Option<RequestResponse> {

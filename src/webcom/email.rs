@@ -500,42 +500,6 @@ pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
     Ok(())
 }
 
-pub fn send_incorrect_new_password_mail() -> GenResult<()> {
-    let env = EnvMailVariables::new();
-    if !env.send_failed_signin_mail {
-        return Ok(());
-    }
-
-    let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
-    let new_password_fail_html =
-        fs::read_to_string("./templates/new_password_failed.html").unwrap();
-    let (_user, properties) = get_data();
-    let mailer = load_mailer(&env)?;
-    let name = get_set_name(None);
-    let password_reset_link = &properties.password_reset_link;
-    let password_change_text = create_new_password_form_html(password_reset_link);
-
-    let login_failure_html = strfmt!(&new_password_fail_html,
-        name => get_set_name(None),
-        additional_text => password_change_text,
-        admin_email => env.mail_error_to.clone()
-    )?;
-    let email_body_html = strfmt!(&base_html,
-        content => login_failure_html,
-        banner_color => COLOR_RED,
-        footer => create_footer().unwrap_or_default()
-    )?;
-
-    let email = Message::builder()
-        .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
-        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
-        .subject("Opgegeven Webcomm wachtwoord incorrect")
-        .header(ContentType::TEXT_HTML)
-        .body(email_body_html)?;
-    mailer.send(&email)?;
-    Ok(())
-}
-
 pub fn send_deletion_warning_mail() -> GenResult<()> {
     let env = EnvMailVariables::new();
 
@@ -561,24 +525,45 @@ pub fn send_deletion_warning_mail() -> GenResult<()> {
     let email = Message::builder()
         .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
         .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
-        .subject("Je Mijn Bussie is verwijderd")
+        .subject("Je Mijn Bussie account wordt over 7 dagen verwijderd")
         .header(ContentType::TEXT_HTML)
         .body(email_body_html)?;
     mailer.send(&email)?;
     Ok(())
 }
 
-pub fn send_account_deleted_mail() -> GenResult<()> {
+pub enum DeletedReason {
+    OldAge,
+    NewDead,
+    Manual,
+}
+
+impl DeletedReason {
+    fn to_str(&self) -> &'static str {
+        match self {
+            Self::OldAge => {
+                "Mijn Bussie kan al een maand niet inloggen op jouw Webcomm account. We gaan er daarom vanuit dat je geen gebruik meer wilt maken van Mijn Bussie.<br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
+            }
+            Self::NewDead => {
+                "Je hebt je recent aangemeld voor Mijn Bussie, je hebt echt geen juiste inloggevens doorgegeven. <br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
+            }
+            _ => "We hebben je account voor Mijn Bussie verwijderd",
+        }
+    }
+}
+
+pub fn send_account_deleted_mail(reason: DeletedReason) -> GenResult<()> {
     let env = EnvMailVariables::new();
 
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
-    let warning_html = fs::read_to_string("./templates/inform_account_deletion.html").unwrap();
+    let deletion_html = fs::read_to_string("./templates/inform_account_deletion.html").unwrap();
     let (_user, properties) = get_data();
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
 
-    let login_failure_html = strfmt!(&warning_html,
+    let login_failure_html = strfmt!(&deletion_html,
         name => get_set_name(None),
+        deletion_reason => reason.to_str().to_owned(),
         sign_up_link => properties.sign_up_url.clone(),
         admin_email => env.mail_error_to.clone()
     )?;
@@ -591,7 +576,45 @@ pub fn send_account_deleted_mail() -> GenResult<()> {
     let email = Message::builder()
         .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
         .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
-        .subject("Je Mijn Bussie account wordt over 7 dagen verwijderd")
+        .subject("Je Mijn Bussie is verwijderd")
+        .header(ContentType::TEXT_HTML)
+        .body(email_body_html)?;
+    mailer.send(&email)?;
+    Ok(())
+}
+
+pub fn send_incorrect_new_password_mail() -> GenResult<()> {
+    let env = EnvMailVariables::new();
+    if !env.send_failed_signin_mail {
+        return Ok(());
+    }
+
+    let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
+    let new_password_fail_html =
+        fs::read_to_string("./templates/new_password_failed.html").unwrap();
+    let (_user, properties) = get_data();
+    let mailer = load_mailer(&env)?;
+    let name = get_set_name(None);
+    let password_reset_link = &properties.password_reset_link;
+    let password_change_text = create_new_password_form_html(password_reset_link);
+    let verbose_error = SignInFailure::to_string(Some(&SignInFailure::IncorrectCredentials));
+
+    let login_failure_html = strfmt!(&new_password_fail_html,
+        name => get_set_name(None),
+        additional_text => password_change_text,
+        signin_error => verbose_error,
+        admin_email => env.mail_error_to.clone()
+    )?;
+    let email_body_html = strfmt!(&base_html,
+        content => login_failure_html,
+        banner_color => COLOR_RED,
+        footer => create_footer().unwrap_or_default()
+    )?;
+
+    let email = Message::builder()
+        .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
+        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
+        .subject("Opgegeven Webcomm wachtwoord incorrect")
         .header(ContentType::TEXT_HTML)
         .body(email_body_html)?;
     mailer.send(&email)?;
@@ -614,15 +637,7 @@ pub fn send_failed_signin_mail(
     let mailer = load_mailer(&env)?;
     let still_not_working_modifier = if first_time { "" } else { "nog steeds " };
     let name = get_set_name(None);
-    let verbose_error = match &error.error {
-        Some(SignInFailure::IncorrectCredentials) => {
-            "Incorrecte inloggegevens, heb je misschien je wachtwoord veranderd?"
-        }
-        Some(SignInFailure::TooManyTries) => "Te veel incorrecte inlogpogingen…",
-        Some(SignInFailure::WebcomDown) => "Webcom heeft op dit moment een storing",
-        Some(SignInFailure::Other(fault)) => fault,
-        _ => "Een onbekende fout...",
-    };
+    let verbose_error = SignInFailure::to_string(error.error.as_ref());
     let password_reset_link = &properties.password_reset_link;
     let password_change_text = if error
         .error
