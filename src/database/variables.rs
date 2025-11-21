@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use dotenvy::var;
 use entity::{
     donation_text, email_properties, general_properties_db, kuma_properties, user_data,
@@ -85,6 +86,7 @@ pub struct GeneralProperties {
     pub execution_retry_count: i32,
     pub support_mail: String,
     pub password_reset_link: String,
+    pub sign_up_url: String,
     #[sea_orm(nested)]
     pub kuma_properties: KumaProperties,
     #[sea_orm(nested, alias = "general_email")]
@@ -157,6 +159,9 @@ pub struct UserData {
     #[sea_orm(nested)]
     pub user_properties: user_properties::Model,
     custom_general_properties: Option<i32>,
+    pub last_succesfull_sign_in_date: Option<NaiveDateTime>,
+    pub last_execution_date: Option<NaiveDateTime>,
+    pub creation_date: NaiveDateTime,
 }
 
 impl UserData {

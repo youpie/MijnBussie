@@ -93,4 +93,6 @@ pub enum GeneralPropertiesDB {
     GeneralEmailProperties,
     KumaProperties,
     DonationText,
+
+    SignUpUrl,
 }

@@ -1,3 +1,4 @@
+pub mod deletion;
 pub mod email;
 pub mod gebroken_shifts;
 pub mod ical;

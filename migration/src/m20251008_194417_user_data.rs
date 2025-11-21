@@ -66,5 +66,10 @@ pub enum UserData {
     FileName,
     UserProperties,
     CustomGeneralProperties,
+
     Name,
+
+    LastExecutionDate,
+    LastSuccesfullSignInDate,
+    CreationDate,
 }

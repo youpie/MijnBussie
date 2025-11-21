@@ -16,7 +16,11 @@ pub struct Model {
     pub file_name: String,
     pub user_properties: i32,
     pub custom_general_properties: Option<i32>,
+    #[sea_orm(column_type = "Text", nullable)]
     pub name: Option<String>,
+    pub last_succesfull_sign_in_date: Option<DateTime>,
+    pub last_execution_date: Option<DateTime>,
+    pub creation_date: DateTime,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -29,6 +33,8 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     GeneralPropertiesDb,
+    #[sea_orm(has_many = "super::user_account::Entity")]
+    UserAccount,
     #[sea_orm(
         belongs_to = "super::user_properties::Entity",
         from = "Column::UserProperties",
@@ -42,6 +48,12 @@ pub enum Relation {
 impl Related<super::general_properties_db::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::GeneralPropertiesDb.def()
+    }
+}
+
+impl Related<super::user_account::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::UserAccount.def()
     }
 }
 

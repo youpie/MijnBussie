@@ -22,6 +22,7 @@ pub enum StartRequest {
     UserData,
     Welcome,
     Calendar,
+    Delete,
 
     // Webcom request
     ExecutionFinished(FailureType),

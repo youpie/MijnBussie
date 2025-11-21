@@ -14,12 +14,16 @@ use crate::database::variables::UserInstanceData;
 use crate::errors::FailureType;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
+use crate::errors::ToString;
 use crate::execution::timer::StartRequest;
 use crate::execution::timer::execution_timer;
 use crate::execution::watchdog::WatchdogRequest;
 use crate::execution::watchdog::watchdog;
 use crate::execution::watchdog::{InstanceMap, RequestResponse};
 use crate::health::ApplicationLogbook;
+use crate::webcom::deletion::check_instance_standing;
+use crate::webcom::deletion::delete_account;
+use crate::webcom::deletion::update_instance_timestamps;
 use crate::webcom::email;
 use crate::webcom::email::create_calendar_link;
 use crate::webcom::ical::get_ical_path;
@@ -267,10 +271,13 @@ async fn user_instance(
             .finish(),
     );
     debug!("starting");
+
     let mut receiver = receiver;
     let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
     let mut last_exit_code = FailureType::default();
-    loop {
+    let mut instance_active = true;
+
+    while instance_active {
         debug!("Waiting for notification");
         let start_request = receiver.recv().await.expect("Notification channel closed");
 
@@ -294,13 +301,24 @@ async fn user_instance(
             )),
             StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
             StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
-            StartRequest::Welcome => Some(RequestResponse::GenResponse(format!(
-                "{:?}",
-                email::send_welcome_mail(&get_ical_path(), true)
-            ))),
+            StartRequest::Welcome => Some(RequestResponse::GenResponse(
+                email::send_welcome_mail(&get_ical_path(), true).to_string(),
+            )),
             StartRequest::Calendar => return_calendar_response(),
             StartRequest::ExecutionFinished(ref exit_code) => {
+                update_instance_timestamps(exit_code)
+                    .await
+                    .warn("Updating instance timestamps");
+                check_instance_standing()
+                    .await
+                    .warn("Checking instance stance");
                 log_exit_code(exit_code, &last_exit_code)
+            }
+            StartRequest::Delete => {
+                instance_active = false;
+                Some(RequestResponse::GenResponse(
+                    delete_account().await.to_string(),
+                ))
             }
             _ => {
                 spawn_webcom_instance(
@@ -322,6 +340,7 @@ async fn user_instance(
             break;
         }
     }
+    warn!("Killing instance, bye👋");
 }
 
 fn log_exit_code(exit_code: &FailureType, last_exit_code: &FailureType) -> Option<RequestResponse> {

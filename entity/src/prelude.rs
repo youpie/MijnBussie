@@ -4,5 +4,6 @@ pub use super::donation_text::Entity as DonationText;
 pub use super::email_properties::Entity as EmailProperties;
 pub use super::general_properties_db::Entity as GeneralPropertiesDb;
 pub use super::kuma_properties::Entity as KumaProperties;
+pub use super::user_account::Entity as UserAccount;
 pub use super::user_data::Entity as UserData;
 pub use super::user_properties::Entity as UserProperties;

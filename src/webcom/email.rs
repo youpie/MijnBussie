@@ -536,6 +536,68 @@ pub fn send_incorrect_new_password_mail() -> GenResult<()> {
     Ok(())
 }
 
+pub fn send_deletion_warning_mail() -> GenResult<()> {
+    let env = EnvMailVariables::new();
+
+    let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
+    let warning_html = fs::read_to_string("./templates/potential_account_deletion.html").unwrap();
+    let (_user, properties) = get_data();
+    let mailer = load_mailer(&env)?;
+    let name = get_set_name(None);
+    let password_reset_link = &properties.password_reset_link;
+    let password_change_text = create_new_password_form_html(password_reset_link);
+
+    let login_failure_html = strfmt!(&warning_html,
+        name => get_set_name(None),
+        additional_text => password_change_text,
+        admin_email => env.mail_error_to.clone()
+    )?;
+    let email_body_html = strfmt!(&base_html,
+        content => login_failure_html,
+        banner_color => COLOR_BASE,
+        footer => String::new()
+    )?;
+
+    let email = Message::builder()
+        .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
+        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
+        .subject("Je Mijn Bussie is verwijderd")
+        .header(ContentType::TEXT_HTML)
+        .body(email_body_html)?;
+    mailer.send(&email)?;
+    Ok(())
+}
+
+pub fn send_account_deleted_mail() -> GenResult<()> {
+    let env = EnvMailVariables::new();
+
+    let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
+    let warning_html = fs::read_to_string("./templates/inform_account_deletion.html").unwrap();
+    let (_user, properties) = get_data();
+    let mailer = load_mailer(&env)?;
+    let name = get_set_name(None);
+
+    let login_failure_html = strfmt!(&warning_html,
+        name => get_set_name(None),
+        sign_up_link => properties.sign_up_url.clone(),
+        admin_email => env.mail_error_to.clone()
+    )?;
+    let email_body_html = strfmt!(&base_html,
+        content => login_failure_html,
+        banner_color => COLOR_BASE,
+        footer => String::new()
+    )?;
+
+    let email = Message::builder()
+        .from(format!("{APPLICATION_NAME} <{}>", &env.mail_from).parse()?)
+        .to(format!("{} <{}>", &name, &env.mail_to.0.expose_secret()).parse()?)
+        .subject("Je Mijn Bussie account wordt over 7 dagen verwijderd")
+        .header(ContentType::TEXT_HTML)
+        .body(email_body_html)?;
+    mailer.send(&email)?;
+    Ok(())
+}
+
 pub fn send_failed_signin_mail(
     error: &IncorrectCredentialsCount,
     first_time: bool,

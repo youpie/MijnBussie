@@ -48,4 +48,6 @@ pub enum UserProperties {
     SendErrorMail,
     SplitNightShift,
     StopMidnightShift,
+
+    AutoDeleteAccount,
 }

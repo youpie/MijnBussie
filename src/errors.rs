@@ -260,3 +260,13 @@ where
         }
     }
 }
+
+pub trait ToString {
+    fn to_string(&self) -> String;
+}
+
+impl<T: std::fmt::Debug> ToString for GenResult<T> {
+    fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
+}
