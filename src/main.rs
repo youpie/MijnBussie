@@ -277,7 +277,7 @@ async fn user_instance(
 
     let mut receiver = receiver;
     let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
-    let mut last_exit_code = FailureType::default();
+    let mut last_exit_code = ApplicationLogbook::load().state;
     let mut instance_active = true;
 
     while instance_active {
@@ -313,6 +313,7 @@ async fn user_instance(
                     .await
                     .warn("Updating instance timestamps");
                 check_instance_standing().await;
+                last_exit_code = exit_code.clone();
                 log_exit_code(exit_code, &last_exit_code)
             }
             StartRequest::Delete => {

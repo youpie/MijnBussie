@@ -59,7 +59,7 @@ case "$1" in
     -a)
         build_a
         transfer_a
-        reload_m
+        reload_a
         remote_reload
         ;;
     -m)
