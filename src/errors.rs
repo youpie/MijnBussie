@@ -161,6 +161,7 @@ impl IncorrectCredentialsCount {
         if let Some(previous_password_hash) = self.previous_password_hash
             && let Ok(current_password_hash) = Self::get_password_hash()
             && previous_password_hash != current_password_hash
+            && self.error == Some(SignInFailure::IncorrectCredentials)
         {
             info!("Password hash has changed, resuming execution");
             return ResumeReason::NewPassword;

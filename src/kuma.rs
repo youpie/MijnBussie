@@ -16,7 +16,7 @@ use tokio::time::sleep;
 use tracing::*;
 use url::Url;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum KumaUserRequest {
     All,
     Users(Vec<String>),

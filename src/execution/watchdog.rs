@@ -35,11 +35,12 @@ enum InstanceState {
     Remove,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub enum WatchdogRequest {
     SingleUser(String),
     KumaRequest((KumaAction, KumaUserRequest)),
     AllUser,
+    FirstTime,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -64,7 +65,7 @@ pub struct UserInstance {
 impl UserInstance {
     pub async fn new(user_data: UserInstanceData) -> Self {
         let user_name = user_data.user_data.read().await.user_name.clone();
-        let span = warn_span!("User", user_name);
+        let span = warn_span!("Instance", user_name);
         let request_channel = channel(1);
         let request_sender_arc = Arc::new(request_channel.0);
         let response_channel = channel(1);
@@ -145,7 +146,13 @@ pub async fn watchdog(
         } else {
             debug!("Updating users");
             let users = UserData::get_all_usernames(db).await?;
-            start_stop_instances(db, instances.clone(), &users).await?;
+            start_stop_instances(
+                db,
+                instances.clone(),
+                &users,
+                channel_wait.eq(&Ok(Some(WatchdogRequest::FirstTime))),
+            )
+            .await?;
             debug!("Users: {users:#?}");
         }
     }
@@ -155,6 +162,7 @@ async fn start_stop_instances(
     db: &DatabaseConnection,
     active_instances: Arc<RwLock<InstanceMap>>,
     db_users: &Vec<String>,
+    first_run: bool,
 ) -> GenResult<()> {
     let mut active_instances = active_instances.write().await;
     let mut instances_state: HashMap<InstanceName, InstanceState> = HashMap::new();
@@ -183,19 +191,24 @@ async fn start_stop_instances(
     add_instances(db, &instances_to_add, &mut active_instances).await;
     stop_instances(&instances_to_remove, &mut active_instances);
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await;
-    kuma::manage_users(
-        vec![
-            (
-                KumaAction::Delete,
-                KumaUserRequest::Users(instances_to_remove),
-            ),
-            (KumaAction::Add, KumaUserRequest::Users(instances_to_add)),
-        ],
-        &active_instances,
-        &default_preferences,
-    )
-    .await
-    .warn("Kuma run");
+    if !first_run {
+        kuma::manage_users(
+            vec![
+                (
+                    KumaAction::Delete,
+                    KumaUserRequest::Users(instances_to_remove),
+                ),
+                (KumaAction::Add, KumaUserRequest::Users(instances_to_add)),
+            ],
+            &active_instances,
+            &default_preferences,
+        )
+        .await
+        .warn("Kuma run");
+    } else {
+        debug!("Skipped kuma due to first run");
+    }
+
     Ok(())
 }
 

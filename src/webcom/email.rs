@@ -597,12 +597,10 @@ pub fn send_incorrect_new_password_mail() -> GenResult<()> {
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
     let password_change_text = create_new_password_form_html(password_reset_link);
-    let verbose_error = SignInFailure::to_string(Some(&SignInFailure::IncorrectCredentials));
 
     let login_failure_html = strfmt!(&new_password_fail_html,
         name => get_set_name(None),
         additional_text => password_change_text,
-        signin_error => verbose_error,
         admin_email => env.mail_error_to.clone()
     )?;
     let email_body_html = strfmt!(&base_html,
@@ -687,7 +685,7 @@ fn create_new_password_form_html(password_reset_link: &str) -> String {
 pub fn send_sign_in_succesful() -> GenResult<()> {
     let env = EnvMailVariables::new();
 
-    if !env.send_error_mail {
+    if !env.send_failed_signin_mail {
         return Ok(());
     }
 

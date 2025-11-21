@@ -431,7 +431,7 @@ async fn main() -> GenResult<()> {
     Migrator::up(&db, None).await?;
 
     let (watchdog_tx, mut watchdog_rx) = channel(1);
-    _ = watchdog_tx.try_send(WatchdogRequest::AllUser);
+    _ = watchdog_tx.try_send(WatchdogRequest::FirstTime);
 
     let instances: Arc<RwLock<InstanceMap>> = Arc::new(RwLock::new(HashMap::new()));
 
