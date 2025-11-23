@@ -178,9 +178,7 @@ pub async fn webcom_instance(
             // If there is a reason to not resume, it is a sign in failure reason, so you can safely assume the failure counter error is set
             current_exit_code =
                 FailureType::SignInFailed(failure_counter.error.clone().unwrap_or_default());
-            clean_execution(&mut logbook, &current_exit_code, sender)
-                .await
-                .warn("cleaning after failed signin");
+            clean_execution(&mut logbook, &current_exit_code, sender).await;
 
             return current_exit_code;
         }
@@ -194,9 +192,7 @@ pub async fn webcom_instance(
         Err(err) => {
             error!("Failed to get driver! error: {}", err.to_string());
             current_exit_code = FailureType::GeckoEngine;
-            clean_execution(&mut logbook, &current_exit_code, sender)
-                .await
-                .warn("cleaning after gecko");
+            clean_execution(&mut logbook, &current_exit_code, sender).await;
             return current_exit_code;
         }
     };
@@ -259,12 +255,6 @@ pub async fn webcom_instance(
         true
     });
 
-    if current_exit_code != FailureType::TriesExceeded {
-        send_heartbeat(&current_exit_code)
-            .await
-            .warn("Sending Heartbeat in loop");
-    }
-
     // Update the exit code in the calendar if it is not equal to the previous value
     if previous_exit_code != current_exit_code {
         warn!("Previous exit code was different than current, need to update");
@@ -272,9 +262,7 @@ pub async fn webcom_instance(
             .warn("Updating calendar exit code");
     }
 
-    clean_execution(&mut logbook, &current_exit_code, sender)
-        .await
-        .warn("cleaning at end");
+    clean_execution(&mut logbook, &current_exit_code, sender, ).await;
 
     current_exit_code
 }
@@ -283,10 +271,13 @@ async fn clean_execution(
     logbook: &mut ApplicationLogbook,
     exit_code: &FailureType,
     sender: Arc<Sender<StartRequest>>,
-) -> GenResult<()> {
+) {
     logbook.save(exit_code).warn("Saving logbook in loop");
-    create_delete_lock(None).await?;
-    sender.try_send(StartRequest::ExecutionFinished(exit_code.clone()))?;
-
-    Ok(())
+    create_delete_lock(None).await.warn("Removing lock");
+    sender
+        .try_send(StartRequest::ExecutionFinished(exit_code.clone()))
+        .warn("Sending exit code back to instance manager");
+    send_heartbeat(&exit_code)
+        .await
+        .warn("Sending Heartbeat in loop");
 }

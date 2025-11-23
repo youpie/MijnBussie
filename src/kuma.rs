@@ -6,6 +6,7 @@ use crate::webcom::email::{COLOR_GREEN, COLOR_RED};
 use crate::{APPLICATION_NAME, GenResult};
 use kuma_client::monitor::{MonitorGroup, MonitorType};
 use kuma_client::{Client, monitor, notification};
+use secrecy::ExposeSecret;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::read_to_string;
@@ -250,7 +251,7 @@ async fn create_notification(
         "smtpPort": port,
         "smtpUsername": kuma_email.smtp_username,
         "smtpPassword": kuma_email.smtp_password,
-        "smtpTo": user.email,
+        "smtpTo": user.email.0.expose_secret(),
         "smtpFrom": kuma_email.mail_from,
         "customBody": body,
         "customSubject": "{% if status contains \"Up\" %}

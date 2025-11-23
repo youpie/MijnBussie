@@ -11,6 +11,7 @@ use crate::{
     webcom::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
     webcom::shift::Shift,
 };
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tracing::*;
 use url::Url;
@@ -20,10 +21,16 @@ pub struct ApplicationLogbook {
     pub state: FailureType,
     // How long the application has been in the same state
     pub repeat_count: u64,
+    #[serde(default)]
+    pub execution_timestamp: NaiveDateTime,
     pub application_state: ApplicationState,
 }
 
 impl ApplicationLogbook {
+    fn get_naive_datetime() -> NaiveDateTime {
+        chrono::offset::Utc::now().naive_utc()
+    }
+
     // Load the previous logbook, or create a new one if that fails
     pub fn load() -> ApplicationLogbook {
         let path = ApplicationLogbook::create_path();
@@ -78,6 +85,7 @@ impl ApplicationLogbook {
             .and_then(|duration| Ok(duration.as_millis() as u64))
             .unwrap_or_default();
         self.application_state.execution_time_ms = execution_time;
+        self.execution_timestamp = Self::get_naive_datetime();
         self.repeat_count = if self.state == *state {
             self.repeat_count + 1
         } else {
@@ -108,6 +116,11 @@ pub struct ApplicationState {
 }
 
 pub async fn send_heartbeat(reason: &FailureType) -> GenResult<()> {
+    if reason == &FailureType::TriesExceeded {
+        debug!("Not sending heartbeat due to tries exceeded");
+        return Ok(())
+    }
+
     let (user, properties) = get_data();
     let personeelsnummer = &user.user_name;
     let mut request_url: Url = properties.kuma_properties.domain.clone().parse()?;
