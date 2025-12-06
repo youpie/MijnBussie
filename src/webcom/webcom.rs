@@ -262,7 +262,7 @@ pub async fn webcom_instance(
             .warn("Updating calendar exit code");
     }
 
-    clean_execution(&mut logbook, &current_exit_code, sender, ).await;
+    clean_execution(&mut logbook, &current_exit_code, sender).await;
 
     current_exit_code
 }
