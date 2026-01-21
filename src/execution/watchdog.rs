@@ -123,7 +123,6 @@ pub async fn watchdog(
     loop {
         // Update all users in the database every 30 minutes
         let channel_wait = timeout(Duration::from_secs(60 * 30), receiver.recv()).await;
-        debug!("{channel_wait:#?}");
         if let Ok(Some(ref request)) = channel_wait
             && let WatchdogRequest::SingleUser(user) = request
         {
@@ -190,14 +189,13 @@ async fn start_stop_instances(
     let instances_to_add =
         get_equal_instances(InstanceState::New, &instances_state, &active_instances);
     add_instances(db, &instances_to_add, &mut active_instances).await;
-    stop_instances(&instances_to_remove, &mut active_instances);
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await;
     if !first_run {
         kuma::manage_users(
             vec![
                 (
                     KumaAction::Delete,
-                    KumaUserRequest::Users(instances_to_remove),
+                    KumaUserRequest::Users(instances_to_remove.clone()),
                 ),
                 (KumaAction::Add, KumaUserRequest::Users(instances_to_add)),
             ],
@@ -209,7 +207,7 @@ async fn start_stop_instances(
     } else {
         debug!("Skipped kuma due to first run");
     }
-
+    stop_instances(&instances_to_remove, &mut active_instances);
     Ok(())
 }
 
@@ -250,13 +248,12 @@ async fn update_individual_user(
         }
     }
     add_instances(db, &instances_to_add, active_instances).await;
-    stop_instances(&instances_to_remove, active_instances);
     refresh_instances(db, &instances_to_refresh, active_instances).await;
     kuma::manage_users(
         vec![
             (
                 KumaAction::Delete,
-                KumaUserRequest::Users(instances_to_remove),
+                KumaUserRequest::Users(instances_to_remove.clone()),
             ),
             (KumaAction::Add, KumaUserRequest::Users(instances_to_add)),
         ],
@@ -265,6 +262,7 @@ async fn update_individual_user(
     )
     .await
     .warn("Kuma run individual");
+    stop_instances(&instances_to_remove, active_instances);
     Ok(())
 }
 

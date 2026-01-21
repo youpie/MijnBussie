@@ -113,6 +113,8 @@ pub async fn manage_users(
                     .await
                     .warn("Deleting notification");
             }
+        } else {
+            warn!("Failed to remove user {instance_name} because the instance is no longer active");
         }
     }
 
