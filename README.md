@@ -5,7 +5,7 @@
       <img alt="Next.js logo" src="https://raw.githubusercontent.com/youpie/webcom_ical/refs/heads/main/assets/logo.png" height="256">
     </picture>
   </a>
-  <h1>Webcom Ical</h1>
+  <h1>Mijn Bussie</h1>
 
 <a href="https://stats.emphisia.nl"><img alt="Uptime kuma" src="https://stats.emphisia.nl/api/badge/18/status?style=plastic"></a>
 
