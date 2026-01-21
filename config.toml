@@ -1,11 +1,17 @@
+[node]
+override-max-sessions = true
+max-sessions = 10
+
 [docker]
 # Configs have a mapping between the Docker image to use and the capabilities that need to be matched to
 # start a container with the given image.
 configs = [
-    "selenium/standalone-firefox:125.0-20251001", '{"browserName": "firefox"}',
+    "selenium/standalone-firefox:125.0-20251001",
+    '{"browserName": "firefox"}',
 ]
 
 host-config-keys = ["Dns", "DnsOptions", "DnsSearch", "ExtraHosts", "Binds"]
+
 
 # URL for connecting to the docker daemon
 # Most simple approach, leave it as http://127.0.0.1:2375, and mount /var/run/docker.sock.
@@ -16,4 +22,3 @@ host-config-keys = ["Dns", "DnsOptions", "DnsSearch", "ExtraHosts", "Binds"]
 # then use http://host.docker.internal:2375.
 # Linux: varies from machine to machine, please mount /var/run/docker.sock. If this does not work, please create an issue.
 url = "http://127.0.0.1:2375"
-
