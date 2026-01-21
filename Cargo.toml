@@ -20,7 +20,7 @@ time = { version = "0.3.44", features = [
     "serde",
 ] }
 migration = { path = "migration" }
-kuma-client = "2.0.0"
+kuma-client = { branch = "master", git = "https://github.com/youpie/AutoKuma.git" }
 url = "2.5.7"
 icalendar = { version = "0.17.5", features = [
     "serde_json",

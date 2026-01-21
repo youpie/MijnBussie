@@ -2253,9 +2253,8 @@ dependencies = [
 
 [[package]]
 name = "kuma-client"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a26d75e73464aecfbe79fc215a9136d3a2a042d586ad0e1622504e03e6823992"
+version = "0.0.0"
+source = "git+https://github.com/youpie/AutoKuma.git?branch=master#b4b9bcc605a1d88828e2707f93b32ae9d30f7caa"
 dependencies = [
  "config",
  "const-str",

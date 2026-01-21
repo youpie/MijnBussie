@@ -23,6 +23,7 @@ use crate::{
         webdriver::{get_driver, wait_until_loaded, wait_untill_redirect},
     },
 };
+use dotenvy::var;
 use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
 use tokio::sync::mpsc::Sender;
@@ -102,11 +103,14 @@ async fn main_program(
 
     let non_relevant_shift_len = non_relevant_shifts.len();
     relevant_shifts.append(&mut non_relevant_shifts);
-    relevant_shifts =
-        gebroken_shifts::load_broken_shift_information(&driver, &relevant_shifts).await?; // Replace the shifts with the newly created list of broken shifts
-    ical::save_partial_shift_files(&relevant_shifts).error("Saving partial shift files");
-    let broken_split_shifts = gebroken_shifts::split_broken_shifts(&relevant_shifts);
-    let midnight_stopped_shifts = gebroken_shifts::stop_shift_at_midnight(&broken_split_shifts)?;
+    if var("SKIP_BROKEN").unwrap_or("false".to_owned()) == "true" {
+        relevant_shifts =
+            gebroken_shifts::load_broken_shift_information(&driver, &relevant_shifts).await?; // Replace the shifts with the newly created list of broken shifts
+        ical::save_partial_shift_files(&relevant_shifts).error("Saving partial shift files");
+        relevant_shifts = gebroken_shifts::split_broken_shifts(&relevant_shifts);
+    }
+
+    let midnight_stopped_shifts = gebroken_shifts::stop_shift_at_midnight(&relevant_shifts)?;
     let mut night_split_shifts = gebroken_shifts::split_night_shift(&midnight_stopped_shifts)?;
     night_split_shifts.sort_by_key(|shift| shift.magic_number);
     night_split_shifts.dedup();

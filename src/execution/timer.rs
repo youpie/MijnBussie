@@ -90,7 +90,6 @@ pub async fn execution_timer(instances: Arc<RwLock<InstanceMap>>) -> GenResult<(
         } else {
             first = false;
         }
-
         let instances = &mut *instances.write().await;
         let current_system_time = get_system_time();
         let system_time_hm = (current_system_time.hour(), current_system_time.minute());

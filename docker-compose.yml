@@ -18,13 +18,14 @@ services:
       - db
       - selenium-hub
       - node-docker
+    profiles: ["prod", "instance"]
 
   mijn-bussie-auth: 
     image: docker.io/library/mijn_bussie_auth
     user: root
     volumes:
 
-      - .env:/usr/src/mijn_bussie_auth/.env
+      - .env:/usr/src/mijn_bussie_auth/.env:Z
     environment:
       - RUST_LOG=${AUTH_LOG}
     ports:
@@ -33,10 +34,11 @@ services:
     networks:
       - MijnBussie
     depends_on:
-      - mijn-bussie
+      #- mijn-bussie
       - db
       - selenium-hub
       - node-docker
+    profiles: ["prod", "auth"]
 
   db:
     image: postgres
@@ -53,13 +55,15 @@ services:
     networks:
       - MijnBussie
     volumes:
-      - ./pg_data:/var/lib/postgresql
+      - ./pg_data:/var/lib/postgresql:Z
 
   selenium-hub:
     image: selenium/hub:latest
     container_name: selenium-hub
     networks:
       - MijnBussie
+    ports:
+      - 4444:4444
 
   node-docker:
     image: selenium/node-docker:latest
