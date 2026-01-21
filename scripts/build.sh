@@ -49,8 +49,8 @@ remote_reload() {
         cd $REMOTE_SERVICE_DIR
         git pull
         git submodule update
-        sudo docker compose down
-        sudo docker compose up -d
+        sudo docker compose --profile prod down
+        sudo docker compose --profile prod up -d
     "
 }
 

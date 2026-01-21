@@ -66,11 +66,11 @@ services:
       - 4444:4444
 
   node-docker:
-    image: selenium/node-docker:latest
+    image: selenium/node-docker:4.40.0
     user: root
     volumes:
-      - ./assets:/opt/selenium/assets:z
-      - ./config.toml:/opt/selenium/docker.toml:z
+      - ./assets:/opt/selenium/assets
+      - ./config.toml:/opt/selenium/docker.toml
       - /var/run/docker.sock:/var/run/docker.sock:z
     environment:
       - SE_NODE_DOCKER_CONFIG_FILENAME=docker.toml

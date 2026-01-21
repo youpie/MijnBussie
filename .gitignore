@@ -25,3 +25,4 @@ data
 calendar
 cert/
 docker_images
+pg_data
