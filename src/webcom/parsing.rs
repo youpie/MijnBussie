@@ -17,6 +17,7 @@ Checks all supplied WebElements, it checks if the day contains the text "Dienstu
 Does not search itself for elements
 */
 async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<(Vec<Shift>, u64)> {
+async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<(Vec<Shift>, u64)> {
     let mut temp_emlements: Vec<Shift> = vec![];
     let mut failed_shifts = 0;
     let elements = driver
@@ -27,6 +28,7 @@ async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<
         let text = match element.attr("data-original-title").await? {
             Some(x) => x,
             None => {
+                return Err("no elements in rooster".into());
                 return Err("no elements in rooster".into());
             }
         };
@@ -45,6 +47,12 @@ async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<
                     debug!("Found Shift {}", &shift.number);
                 }
                 Err(error) => {
+                    error!(
+                        "FAILED TO CREATE SHIFT!\nDATE: {}\nERROR: {}",
+                        date.format(DATE_DESCRIPTION)?,
+                        error.to_string()
+                    );
+                    failed_shifts += 1;
                     error!(
                         "FAILED TO CREATE SHIFT!\nDATE: {}\nERROR: {}",
                         date.format(DATE_DESCRIPTION)?,
@@ -107,6 +115,10 @@ pub async fn load_next_month_shifts(
     driver: &WebDriver,
     logbook: &mut ApplicationLogbook,
 ) -> GenResult<Vec<Shift>> {
+pub async fn load_next_month_shifts(
+    driver: &WebDriver,
+    logbook: &mut ApplicationLogbook,
+) -> GenResult<Vec<Shift>> {
     debug!("Loading Next Month..");
     let now = time::OffsetDateTime::now_utc();
     let today = now.date();
@@ -127,6 +139,10 @@ pub async fn load_next_month_shifts(
     Ok(shifts.0)
 }
 
+pub async fn load_current_month_shifts(
+    driver: &WebDriver,
+    logbook: &mut ApplicationLogbook,
+) -> GenResult<Vec<Shift>> {
 pub async fn load_current_month_shifts(
     driver: &WebDriver,
     logbook: &mut ApplicationLogbook,
@@ -173,7 +189,6 @@ async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenRe
         .click()
         .await?;
     debug!("waiting until login page is loaded");
-    //wait_until_loaded(&driver).await?;
     let _ = wait_for_response(&driver, By::Tag("h3"), false).await;
     debug!("login page is loaded");
     let name_text = match driver.find(By::Tag("h3")).await {
