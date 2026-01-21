@@ -9,8 +9,8 @@ services:
       - ./data/:/usr/src/mijn_bussie/data/
     environment:
       - RUST_LOG=${BUSSIE_LOG}
-    #ports:
-    #  - ${INSTANCE_API_PORT}:3000
+    ports:
+      - ${INSTANCE_API_PORT}:3000
     restart: unless-stopped
     networks:
       - MijnBussie
@@ -28,7 +28,7 @@ services:
     environment:
       - RUST_LOG=${AUTH_LOG}
     ports:
-      - ${API_PORT}
+      - ${API_PORT}:${API_PORT}
     restart: unless-stopped
     networks:
       - MijnBussie

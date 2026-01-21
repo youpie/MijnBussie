@@ -384,6 +384,7 @@ pub fn set_strict_file_permissions(path: &PathBuf) -> GenResult<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 fn check_env_permissions() -> GenResult<()> {
     let uid = std::fs::metadata("/proc/self").map(|m| m.uid())?;
     let permissions_target = 0o100600;
@@ -419,8 +420,10 @@ async fn main() -> GenResult<()> {
     let global_subscriber = Registry::default().with(stdout_layer);
     tracing::subscriber::set_global_default(global_subscriber)
         .expect("Failed to set global subscriber");
-    check_env_permissions().unwrap();
-
+    #[cfg(not(debug_assertions))] {
+        check_env_permissions().unwrap();
+    }
+    
     dotenv_override()?;
     info!("Starting {APPLICATION_NAME}");
     CryptoProvider::install_default(default_provider()).unwrap();
@@ -443,4 +446,5 @@ async fn main() -> GenResult<()> {
 
     info!("Stopping {APPLICATION_NAME}");
     Ok(())
+    
 }
