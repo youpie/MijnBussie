@@ -58,7 +58,7 @@ services:
       - ./pg_data:/var/lib/postgresql:Z
 
   selenium-hub:
-    image: selenium/hub:latest
+    image: selenium/hub:4.40.0
     container_name: selenium-hub
     networks:
       - MijnBussie
