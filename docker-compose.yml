@@ -64,6 +64,8 @@ services:
       - MijnBussie
     ports:
       - 4444:4444
+    volumes:
+      - ./config.toml:/opt/selenium/docker.toml
 
   node-docker:
     image: selenium/node-docker:4.40.0
