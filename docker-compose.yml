@@ -64,8 +64,6 @@ services:
       - MijnBussie
     ports:
       - 4444:4444
-    volumes:
-      - ./config.toml:/opt/selenium/docker.toml    
 
   node-docker:
     image: selenium/node-docker:4.40.0
@@ -74,10 +72,9 @@ services:
       - ./assets:/opt/selenium/assets
       - ./config.toml:/opt/selenium/docker.toml
       - /var/run/docker.sock:/var/run/docker.sock:z
-      
     environment:
       - SE_NODE_DOCKER_CONFIG_FILENAME=docker.toml
-      - SE_NODE_=true
+      - SE_EVENT_BUS_HOST=selenium-hub
     networks:
       - MijnBussie
     restart: unless-stopped
