@@ -28,7 +28,6 @@ async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<
             Some(x) => x,
             None => {
                 return Err("no elements in rooster".into());
-                return Err("no elements in rooster".into());
             }
         };
         if !text.is_empty() && text.contains("Dienstduur") {
