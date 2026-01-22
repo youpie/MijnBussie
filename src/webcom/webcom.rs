@@ -103,7 +103,7 @@ async fn main_program(
 
     let non_relevant_shift_len = non_relevant_shifts.len();
     relevant_shifts.append(&mut non_relevant_shifts);
-    if var("SKIP_BROKEN").unwrap_or("false".to_owned()) == "true" {
+    if var("SKIP_BROKEN").unwrap_or("false".to_owned()) != "true" {
         relevant_shifts =
             gebroken_shifts::load_broken_shift_information(&driver, &relevant_shifts).await?; // Replace the shifts with the newly created list of broken shifts
         ical::save_partial_shift_files(&relevant_shifts).error("Saving partial shift files");
