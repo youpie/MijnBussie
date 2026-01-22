@@ -4,7 +4,7 @@ services:
     image: docker.io/library/mijn_bussie
     user: root
     volumes:
-      - .env:/app/.env
+      - .env:/app/.env:z
       - ${SAVE_TARGET}:/app/calendar/
       - ./data/:/app/data/
     environment:
@@ -24,8 +24,7 @@ services:
     image: docker.io/library/mijn_bussie_auth
     user: root
     volumes:
-
-      - .env:/app/mijn_bussie_auth/.env:Z
+      - .env:/app/.env:Z
     environment:
       - RUST_LOG=${AUTH_LOG}
     ports:

@@ -26,3 +26,5 @@ calendar
 cert/
 docker_images
 pg_data
+/vendor
+/mijn_bussie

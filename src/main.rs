@@ -386,16 +386,19 @@ pub fn set_strict_file_permissions(path: &PathBuf) -> GenResult<()> {
 
 #[allow(dead_code)]
 fn check_env_permissions() -> GenResult<()> {
-    let uid = std::fs::metadata("/proc/self").map(|m| m.uid())?;
+    let uid = std::fs::metadata("/proc/self")
+        .map(|m| m.uid())
+        .warn_owned("Failed to get uid")
+        .ok();
     let permissions_target = 0o100600;
     let metadata = std::fs::File::open("./.env")?.metadata()?;
     let file_mode = metadata.permissions().mode();
     let file_owner = metadata.uid();
-    if file_mode == permissions_target && file_owner == uid {
+    if file_mode == permissions_target && Some(file_owner) == uid {
         Ok(())
     } else {
         Err(format!(
-            "INCORRECT PERMISSIONS FOR ENV. Should be {permissions_target:o}, is {file_mode:o}. File owner should be {uid}, is {file_owner}"
+            "INCORRECT PERMISSIONS FOR ENV. Should be {permissions_target:o}, is {file_mode:o}. File owner should be {uid:?}, is {file_owner}"
         )
         .into())
     }
@@ -420,10 +423,11 @@ async fn main() -> GenResult<()> {
     let global_subscriber = Registry::default().with(stdout_layer);
     tracing::subscriber::set_global_default(global_subscriber)
         .expect("Failed to set global subscriber");
-    #[cfg(not(debug_assertions))] {
+    #[cfg(not(debug_assertions))]
+    {
         check_env_permissions().unwrap();
     }
-    
+
     dotenv_override()?;
     info!("Starting {APPLICATION_NAME}");
     CryptoProvider::install_default(default_provider()).unwrap();
@@ -446,5 +450,4 @@ async fn main() -> GenResult<()> {
 
     info!("Stopping {APPLICATION_NAME}");
     Ok(())
-    
 }
