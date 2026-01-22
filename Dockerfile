@@ -24,7 +24,7 @@ COPY --from=builder /usr/src/mijn_bussie/target/release/mijn_bussie .
 
 COPY ./templates /app/templates
 
-RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir cert
 RUN openssl req -new -newkey rsa:4096 -x509 -sha256 -nodes -out cert/cert.crt -keyout cert/key.key -subj "/C=NL/ST=NB/L=EHV/CN=mijn_bussie"
