@@ -1,10 +1,23 @@
 FROM rust:1.91.1 AS builder
 
 WORKDIR /usr/src/mijn_bussie_auth
-COPY ./src ./src
+
+# Copy vendor files to reduce pointless bandwidth use
+COPY vendor ./vendor
+COPY docker_cargo/config.toml ./.cargo/config.toml
+
+COPY src ./src
 COPY Cargo.lock ./
 COPY Cargo.toml ./
 COPY entity ./entity
+
+# Create an empty file, when cargo compiles the empty file it will also compile all dependencies.
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release
+
+# If we then remove this file and copy the actual files, it will cache the first build. And only compile the main source again, unless you change cargo.toml
+RUN rm -rf src
+COPY src ./src
 
 RUN cargo build --release
 

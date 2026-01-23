@@ -1,16 +1,23 @@
 FROM rust:1.91.1 AS builder
 
-
 WORKDIR /usr/src/mijn_bussie
 
-# COPY vendor ./vendor
-# COPY docker_cargo/config.toml ./.cargo/config.toml
+# Copy vendor files to reduce pointless bandwidth use
+COPY vendor ./vendor
+COPY docker_cargo/config.toml ./.cargo/config.toml
 
-COPY ./src ./src
-COPY Cargo.lock ./
-COPY Cargo.toml ./
+# 1. Cache dependency build
+COPY Cargo.toml Cargo.lock ./
 COPY entity ./entity
 COPY migration ./migration
+
+# Create an empty file, when cargo compiles the empty file it will also compile all dependencies.
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release
+
+# If we then remove this file and copy the actual files, it will cache the first build. And only compile the main source again, unless you change cargo.toml
+RUN rm -rf src
+COPY src ./src
 
 RUN cargo build --release
 
@@ -28,9 +35,5 @@ RUN apt-get update && apt-get install -y openssl ca-certificates && rm -rf /var/
 
 RUN mkdir cert
 RUN openssl req -new -newkey rsa:4096 -x509 -sha256 -nodes -out cert/cert.crt -keyout cert/key.key -subj "/C=NL/ST=NB/L=EHV/CN=mijn_bussie"
-
-RUN ls -lah ./
-RUN pwd
-RUN ldd ./mijn_bussie
 
 CMD ["/app/mijn_bussie"]
