@@ -251,7 +251,7 @@ This starts the WebDriver session
 Loads the main logic, and retries if it fails
 */
 async fn user_instance(
-    receiver: Receiver<StartRequest>,
+    mut receiver: Receiver<StartRequest>,
     sender: Sender<RequestResponse>,
     meta_sender: Arc<Sender<StartRequest>>,
     instance: UserInstanceData,
@@ -275,7 +275,7 @@ async fn user_instance(
     );
     debug!("starting");
 
-    let mut receiver = receiver;
+    let mut system_request = false;
     let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
     let mut last_exit_code = ApplicationLogbook::load().state;
     let mut instance_active = true;
@@ -309,9 +309,10 @@ async fn user_instance(
             )),
             StartRequest::Calendar => return_calendar_response(),
             StartRequest::ExecutionFinished(ref exit_code) => {
-                update_instance_timestamps(exit_code, instance.user_data.clone())
+                update_instance_timestamps(exit_code, instance.user_data.clone(), system_request)
                     .await
                     .warn("Updating instance timestamps");
+                system_request = false;
                 check_instance_standing().await;
                 last_exit_code = exit_code.clone();
                 log_exit_code(exit_code, &last_exit_code)
@@ -332,6 +333,7 @@ async fn user_instance(
                 Some(RequestResponse::InstanceStanding(StandingInformation::get()))
             }
             _ => {
+                system_request = true;
                 spawn_webcom_instance(
                     &start_request,
                     meta_sender.clone(),

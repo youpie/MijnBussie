@@ -51,9 +51,13 @@ fn calculate_first_execution_time_simple(execution_interval: i32, execution_minu
     let current_system_time = get_system_time_zero_seconds();
 
     let mut interval_hours = execution_interval / 60;
-    if interval_hours == 0 {
-        interval_hours += 1
-    }
+    interval_hours = if interval_hours == 0 {
+        1
+    } else if interval_hours > 2 {
+        2
+    } else {
+        interval_hours
+    };
 
     let random_execution_hour = rand::random_range(0..=interval_hours);
 
@@ -80,10 +84,11 @@ pub async fn calculate_initial_execution_time(
     execution_minute: i32,
 ) -> Time {
     if last_execution_timestamp.is_none() {
+        debug!("User has no execution timestamp, randomly generating");
         return calculate_first_execution_time_simple(execution_interval, execution_minute);
     }
 
-    let mut next_execution_time = Time::from_hms(0, 0, 0).unwrap();
+    let next_execution_time;
     let current_system_time = get_system_time_zero_seconds();
     let elapsed_minutes_since_last_execution = ApplicationLogbook::get_naive_datetime()
         .signed_duration_since(last_execution_timestamp.unwrap())
@@ -98,12 +103,7 @@ pub async fn calculate_initial_execution_time(
     debug!("The calculated next execution is in {time_until_next_execution} min");
     if time_until_next_execution > 0 {
         debug!("This is within this users execution interval window of {execution_interval} mins");
-        let mut next_execution_time_local =
-            current_system_time + Duration::minutes(time_until_next_execution);
-        next_execution_time_local = next_execution_time
-            .replace_minute(execution_minute as u8)
-            .unwrap_or(next_execution_time_local);
-        next_execution_time = next_execution_time_local
+        next_execution_time = current_system_time + Duration::minutes(time_until_next_execution)
     } else {
         next_execution_time =
             calculate_first_execution_time_simple(execution_interval, execution_minute);
@@ -140,15 +140,16 @@ async fn calculate_next_execution_time(data: Arc<RwLock<UserData>>) -> Time {
 pub async fn execution_timer(instances: Arc<RwLock<InstanceMap>>) -> GenResult<()> {
     let mut first = true;
     loop {
+        let current_system_time = get_system_time();
         if !first {
-            let sleep_time = 60 - get_system_time().second() as u64 + 1;
+            let sleep_time = 60 - current_system_time.second() as u64 + 1;
             debug!("timer sleeping for {sleep_time} seconds");
             sleep(std::time::Duration::from_secs(sleep_time)).await;
         } else {
             first = false;
         }
         let instances = &mut *instances.write().await;
-        let current_system_time = get_system_time();
+
         let system_time_hm = (current_system_time.hour(), current_system_time.minute());
         for instance in instances.iter_mut() {
             let instance_execution = instance.1.execution_time;
