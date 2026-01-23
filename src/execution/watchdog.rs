@@ -8,7 +8,7 @@ use std::{
 use crate::{
     GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
     database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
-    execution::timer::{StartRequest, calculate_next_execution_time, get_system_time},
+    execution::timer::{StartRequest, calculate_initial_execution_time, get_system_time},
     kuma, user_instance,
 };
 use crate::{errors::FailureType, kuma::KumaUserRequest};
@@ -88,7 +88,15 @@ impl UserInstance {
                 ),
             ),
         );
-        let execution_time = calculate_next_execution_time(user_data.user_data.clone(), true).await;
+
+        let user_data_clone = user_data.user_data.read().await.clone();
+        let execution_time = calculate_initial_execution_time(
+            user_data_clone.last_system_execution_date,
+            user_data_clone.user_properties.execution_interval_minutes,
+            user_data_clone.user_properties.execution_minute,
+        )
+        .await;
+
         info!(
             "Executing user {} in {} minutes",
             user_data.user_data.read().await.user_name,

@@ -21,6 +21,7 @@ pub struct Model {
     pub last_succesfull_sign_in_date: Option<DateTime>,
     pub last_execution_date: Option<DateTime>,
     pub creation_date: DateTime,
+    pub last_system_execution_date: Option<DateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

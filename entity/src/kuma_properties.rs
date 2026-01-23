@@ -9,13 +9,13 @@ pub struct Model {
     #[sea_orm(primary_key)]
     pub kuma_id: i32,
     pub domain: String,
+    pub kuma_username: String,
+    pub kuma_password: String,
     pub hearbeat_retry: i32,
     pub offline_mail_resend_hours: i32,
     pub kuma_email_properties: i32,
     pub mail_port: i32,
     pub use_ssl: bool,
-    pub kuma_username: String,
-    pub kuma_password: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

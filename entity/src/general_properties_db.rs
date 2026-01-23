@@ -22,6 +22,7 @@ pub struct Model {
     pub kuma_properties: i32,
     pub general_email_properties: i32,
     pub donation_text: i32,
+    #[sea_orm(column_type = "Text")]
     pub sign_up_url: String,
 }
 

@@ -70,6 +70,7 @@ pub enum UserData {
     Name,
 
     LastExecutionDate,
+    LastSystemExecutionDate,
     LastSuccesfullSignInDate,
     CreationDate,
 }

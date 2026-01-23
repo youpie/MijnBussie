@@ -24,6 +24,7 @@ use crate::{
 pub async fn update_instance_timestamps(
     exit_code: &FailureType,
     instance_data: Arc<RwLock<UserData>>,
+    execution_by_system: bool,
 ) -> GenResult<()> {
     let db = get_database_connection().await;
     let (user, _properties) = get_data();
@@ -37,6 +38,10 @@ pub async fn update_instance_timestamps(
         if exit_code != &FailureType::SignInFailed(SignInFailure::IncorrectCredentials) {
             active_user.last_succesfull_sign_in_date = Set(Some(timestamp.clone()));
             instance_data.last_succesfull_sign_in_date = Some(timestamp.clone());
+        }
+        if execution_by_system {
+            active_user.last_system_execution_date = Set(Some(timestamp.clone()));
+            instance_data.last_system_execution_date = Some(timestamp.clone());
         }
         user_data::Entity::update(active_user)
             .validate()?
