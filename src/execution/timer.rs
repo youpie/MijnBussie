@@ -1,35 +1,13 @@
 use std::sync::Arc;
 
 use crate::{
-    GenResult, database::variables::UserData, errors::FailureType,
-    execution::watchdog::InstanceMap, health::ApplicationLogbook,
+    GenResult, StartRequest, database::variables::UserData, execution::watchdog::InstanceMap,
+    health::ApplicationLogbook,
 };
 use chrono::NaiveDateTime;
-use serde::Serialize;
 use time::{Duration, OffsetDateTime, Time};
 use tokio::{sync::RwLock, time::sleep};
 use tracing::*;
-
-#[allow(dead_code)]
-#[derive(PartialEq, Serialize, Clone, Debug)]
-pub enum StartRequest {
-    Timer,
-    Api,
-    Single,
-    Force,
-    Logbook,
-    Name,
-    IsActive,
-    ExitCode,
-    UserData,
-    Welcome,
-    Calendar,
-    Delete,
-    Standing,
-
-    // Webcom request
-    ExecutionFinished(FailureType),
-}
 
 pub fn get_system_time() -> Time {
     let time = OffsetDateTime::now_local()

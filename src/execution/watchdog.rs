@@ -6,9 +6,9 @@ use std::{
 };
 
 use crate::{
-    GENERAL_PROPERTIES, GenResult, NAME, USER_PROPERTIES,
+    GENERAL_PROPERTIES, GenResult, NAME, StartRequest, USER_PROPERTIES,
     database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
-    execution::timer::{StartRequest, calculate_initial_execution_time, get_system_time},
+    execution::timer::{calculate_initial_execution_time, get_system_time},
     kuma, user_instance,
 };
 use crate::{errors::FailureType, kuma::KumaUserRequest};

@@ -15,7 +15,6 @@ use crate::errors::FailureType;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
 use crate::errors::ToString;
-use crate::execution::timer::StartRequest;
 use crate::execution::timer::execution_timer;
 use crate::execution::watchdog::WatchdogRequest;
 use crate::execution::watchdog::watchdog;
@@ -43,6 +42,7 @@ use sea_orm::DatabaseConnection;
 use sea_orm::EntityTrait;
 use sea_orm::IntoActiveModel;
 use secrecy::ExposeSecret;
+use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fs::set_permissions;
@@ -244,6 +244,27 @@ fn is_webcom_instance_active(thread_store: &Option<JoinHandle<FailureType>>) -> 
     thread_store
         .as_ref()
         .is_some_and(|thread| !thread.is_finished())
+}
+
+#[allow(dead_code)]
+#[derive(PartialEq, Serialize, Clone, Debug)]
+pub enum StartRequest {
+    Timer,
+    Api,
+    Single,
+    Force,
+    Logbook,
+    Name,
+    IsActive,
+    ExitCode,
+    UserData,
+    Welcome,
+    Calendar,
+    Delete,
+    Standing,
+
+    // Webcom request
+    ExecutionFinished(FailureType),
 }
 
 /*
