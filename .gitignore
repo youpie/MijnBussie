@@ -28,3 +28,4 @@ docker_images
 pg_data
 /vendor
 /mijn_bussie
+selenium-server.log

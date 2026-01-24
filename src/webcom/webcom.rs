@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::StartRequest;
 use crate::errors::ResultLog;
 use crate::webcom::gebroken_shifts;
 use crate::webcom::shift::Shift;
 use crate::{
     FALLBACK_URL, GenError, GenResult, MAIN_URL, create_path,
     errors::{FailureType, IncorrectCredentialsCount},
-    execution::timer::StartRequest,
     get_data, get_set_name,
     health::{ApplicationLogbook, send_heartbeat, update_calendar_exit_code},
     webcom::{
@@ -104,7 +104,7 @@ async fn main_program(
     let non_relevant_shift_len = non_relevant_shifts.len();
     relevant_shifts.append(&mut non_relevant_shifts);
     let broken_shifts;
-    if var("SKIP_BROKEN").unwrap_or("false".to_owned()) != "true" {
+    if var("SKIP_BROKEN").unwrap_or_default() != "true" {
         relevant_shifts =
             gebroken_shifts::load_broken_shift_information(&driver, &relevant_shifts).await?; // Replace the shifts with the newly created list of broken shifts
         ical::save_partial_shift_files(&relevant_shifts).error("Saving partial shift files");
@@ -112,7 +112,6 @@ async fn main_program(
     } else {
         broken_shifts = relevant_shifts.clone();
     }
-
     let midnight_stopped_shifts = gebroken_shifts::stop_shift_at_midnight(&broken_shifts)?;
     let mut night_split_shifts = gebroken_shifts::split_night_shift(&midnight_stopped_shifts)?;
     night_split_shifts.sort_by_key(|shift| shift.magic_number);

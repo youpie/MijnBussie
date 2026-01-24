@@ -27,7 +27,7 @@ pub struct ApplicationLogbook {
 }
 
 impl ApplicationLogbook {
-    fn get_naive_datetime() -> NaiveDateTime {
+    pub fn get_naive_datetime() -> NaiveDateTime {
         chrono::offset::Utc::now().naive_utc()
     }
 
@@ -118,7 +118,7 @@ pub struct ApplicationState {
 pub async fn send_heartbeat(reason: &FailureType) -> GenResult<()> {
     if reason == &FailureType::TriesExceeded {
         debug!("Not sending heartbeat due to tries exceeded");
-        return Ok(())
+        return Ok(());
     }
 
     let (user, properties) = get_data();

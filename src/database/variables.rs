@@ -160,6 +160,7 @@ pub struct UserData {
     pub user_properties: user_properties::Model,
     custom_general_properties: Option<i32>,
     pub last_succesfull_sign_in_date: Option<NaiveDateTime>,
+    pub last_system_execution_date: Option<NaiveDateTime>,
     pub last_execution_date: Option<NaiveDateTime>,
     pub creation_date: NaiveDateTime,
 }

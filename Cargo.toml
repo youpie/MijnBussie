@@ -52,5 +52,3 @@ tracing-futures = { version = "0.2.5", features = ["tokio"] }
 tower = "0.5.3"
 axum-server = { version = "0.8.0", features = ["rustls", "tls-rustls"] }
 rustls = { version = "0.23.35", features = ["ring"] }
-
-# hyper = "=1.7.0"
