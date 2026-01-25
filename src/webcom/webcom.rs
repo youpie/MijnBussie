@@ -93,6 +93,7 @@ async fn main_program(
     let mut previous_shifts =
         match get_previous_shifts().warn_owned("Getting previous shift information") {
             Ok(Err(CalendarVersionError::ForceReplace)) => {
+                warn!("Force replacing shifts");
                 force_replace = true;
                 PreviousShifts::default()
             }

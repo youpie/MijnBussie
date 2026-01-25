@@ -68,7 +68,7 @@ pub fn load_ical_file(path: &Path) -> GenResult<Calendar> {
                         warn!("Welcome change");
                         return Err(Box::new(CalendarVersionError::WelcomeChange));
                     }
-                    'G' => {
+                    'F' => {
                         return Err(Box::new(CalendarVersionError::ForceReplace));
                     }
                     _ => {
@@ -129,7 +129,17 @@ pub fn split_relevant_shifts(shifts: Vec<Shift>) -> (Vec<Shift>, Vec<Shift>) {
 // If true, the partial calendars need to be recreated. If date has changed
 // If false, doesn't need to happen
 // None, unknown, error occured
-fn is_partial_calendar_regeneration_needed() -> GenResult<Option<bool>> {
+fn is_partial_calendar_regeneration_needed(
+    ical_file: &GenResult<Calendar>,
+) -> GenResult<Option<bool>> {
+    if ical_file
+        .as_ref()
+        .is_err_and(|err| err.downcast_ref::<CalendarVersionError>().is_some())
+    {
+        info!("Regenerating calendar due to new calendar version");
+        return Ok(Some(true));
+    }
+
     let current_date = match OffsetDateTime::now_local() {
         Ok(date) => date.date(),
         Err(_err) => {
@@ -223,14 +233,15 @@ pub fn get_previous_shifts() -> GenResult<Result<PreviousShifts, CalendarVersion
     let relevant_events_exist = create_path(RELEVANT_EVENTS_PATH).exists();
     let non_relevant_events_exist = create_path(NON_RELEVANT_EVENTS_PATH).exists();
     let main_ical_path = get_ical_path();
-    if is_partial_calendar_regeneration_needed()?.is_none_or(|needed| needed)
+    let ical_file = load_ical_file(&main_ical_path);
+    if is_partial_calendar_regeneration_needed(&ical_file)?.is_none_or(|needed| needed)
         || !(relevant_events_exist && non_relevant_events_exist)
     {
         info!("calendar regeneration needed");
         if !main_ical_path.exists() {
             return Ok(Err(CalendarVersionError::GeneralRegeneration));
         }
-        let main_calendar = match load_ical_file(&main_ical_path) {
+        let main_calendar = match ical_file {
             Ok(calendar) => calendar,
             Err(err) => {
                 return match err.downcast_ref::<CalendarVersionError>() {
