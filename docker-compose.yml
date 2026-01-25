@@ -5,8 +5,8 @@ services:
     user: root
     volumes:
       - .env:/app/.env:z
-      - ${SAVE_TARGET}:/app/calendar/
-      - ./data/:/app/data/
+      - ${SAVE_TARGET}:/app/calendar/:z
+      - ./data/:/app/data/:z
     environment:
       - RUST_LOG=${BUSSIE_LOG}
     ports:

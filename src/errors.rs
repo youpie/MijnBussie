@@ -278,6 +278,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub trait ToString {
     fn to_string(&self) -> String;
 }

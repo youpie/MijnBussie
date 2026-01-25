@@ -151,6 +151,8 @@ pub async fn watchdog(
             )
             .await
             .warn("Api kuma run");
+        } else if channel_wait == Ok(None) {
+            return Err("Notification channel closed".into());
         } else {
             debug!("Updating users");
             let users = UserData::get_all_usernames(db).await?;

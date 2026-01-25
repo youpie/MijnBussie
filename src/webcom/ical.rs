@@ -32,18 +32,23 @@ impl ToNaive for time::Date {
 // UPDATE THIS WHENEVER ANYTHING CHANGES IN THE ICAL
 // Add B if it modifies of removes an already existing value
 // Add W if it is wanted to resend the welcome mail
-pub const CALENDAR_VERSION: &str = "4";
+// Add F if you want to force replace relevant shifts
+pub const CALENDAR_VERSION: &str = "6F";
 
 const PREVIOUS_EXECUTION_DATE_PATH: &str = "previous_execution_date.json";
 pub const NON_RELEVANT_EVENTS_PATH: &str = "non_relevant_events.json";
 pub const RELEVANT_EVENTS_PATH: &str = "relevant_events.json";
 
-#[derive(Debug, Error, Clone, PartialEq)]
-enum CalendarVersionError {
+#[derive(Debug, Error, Clone, Copy, PartialEq)]
+pub enum CalendarVersionError {
     #[error("Calendar version changed with a breaking change")]
     BreakingChange,
     #[error("Calendar version has changed, and welcome mail is requested")]
     WelcomeChange,
+    #[error("Calendar version has changed, and replacing all relevant shifts is required")]
+    ForceReplace,
+    #[error("Daily regeneration needed")]
+    GeneralRegeneration,
 }
 
 pub fn load_ical_file(path: &Path) -> GenResult<Calendar> {
@@ -62,6 +67,9 @@ pub fn load_ical_file(path: &Path) -> GenResult<Calendar> {
                     'W' => {
                         warn!("Welcome change");
                         return Err(Box::new(CalendarVersionError::WelcomeChange));
+                    }
+                    'F' => {
+                        return Err(Box::new(CalendarVersionError::ForceReplace));
                     }
                     _ => {
                         info!("Non beaking change");
@@ -121,7 +129,17 @@ pub fn split_relevant_shifts(shifts: Vec<Shift>) -> (Vec<Shift>, Vec<Shift>) {
 // If true, the partial calendars need to be recreated. If date has changed
 // If false, doesn't need to happen
 // None, unknown, error occured
-fn is_partial_calendar_regeneration_needed() -> GenResult<Option<bool>> {
+fn is_partial_calendar_regeneration_needed(
+    ical_file: &GenResult<Calendar>,
+) -> GenResult<Option<bool>> {
+    if ical_file
+        .as_ref()
+        .is_err_and(|err| err.downcast_ref::<CalendarVersionError>().is_some())
+    {
+        info!("Regenerating calendar due to new calendar version");
+        return Ok(Some(true));
+    }
+
     let current_date = match OffsetDateTime::now_local() {
         Ok(date) => date.date(),
         Err(_err) => {
@@ -211,27 +229,28 @@ pub fn get_ical_path() -> PathBuf {
     ical_path
 }
 
-pub fn get_previous_shifts() -> GenResult<Option<PreviousShifts>> {
+pub fn get_previous_shifts() -> GenResult<Result<PreviousShifts, CalendarVersionError>> {
     let relevant_events_exist = create_path(RELEVANT_EVENTS_PATH).exists();
     let non_relevant_events_exist = create_path(NON_RELEVANT_EVENTS_PATH).exists();
     let main_ical_path = get_ical_path();
-    if is_partial_calendar_regeneration_needed()?.is_none_or(|needed| needed)
+    let ical_file = load_ical_file(&main_ical_path);
+    if is_partial_calendar_regeneration_needed(&ical_file)?.is_none_or(|needed| needed)
         || !(relevant_events_exist && non_relevant_events_exist)
     {
         info!("calendar regeneration needed");
         if !main_ical_path.exists() {
-            return Ok(None);
+            return Ok(Err(CalendarVersionError::GeneralRegeneration));
         }
-        let main_calendar = match load_ical_file(&main_ical_path) {
+        let main_calendar = match ical_file {
             Ok(calendar) => calendar,
             Err(err) => {
                 return match err.downcast_ref::<CalendarVersionError>() {
-                    Some(ver_err) if ver_err == &CalendarVersionError::BreakingChange => Ok(None),
                     Some(ver_err) if ver_err == &CalendarVersionError::WelcomeChange => {
                         info!("Removing existing calendar file");
                         _ = fs::remove_file(main_ical_path);
-                        Ok(None)
+                        Ok(Err(*ver_err))
                     }
+                    Some(ver_err) => Ok(Err(*ver_err)),
                     _ => Err(err),
                 };
             }
@@ -253,7 +272,7 @@ pub fn get_previous_shifts() -> GenResult<Option<PreviousShifts>> {
             previous_relevant_shifts.len(),
             previous_non_relevant_shifts.len()
         );
-        Ok(Some(PreviousShifts {
+        Ok(Ok(PreviousShifts {
             relevant_shifts: previous_relevant_shifts,
             non_relevant_shifts: previous_non_relevant_shifts,
         }))
@@ -272,7 +291,7 @@ pub fn get_previous_shifts() -> GenResult<Option<PreviousShifts>> {
             .collect();
         let previous_non_relevant_shifts: Vec<Shift> =
             serde_json::from_str(&non_relevant_shifts_str)?;
-        Ok(Some(PreviousShifts {
+        Ok(Ok(PreviousShifts {
             relevant_shifts: previous_relevant_shifts,
             non_relevant_shifts: previous_non_relevant_shifts,
         }))
@@ -317,7 +336,7 @@ Creates the ICAL file to add to the calendar
 Needs previous exit code so it can add it to the calendar
 Will later be replaced with current exit code if its different
 */
-pub fn create_ical(
+pub fn create_calendar_file(
     shifts: &Vec<Shift>,
     metadata: &Vec<Shift>,
     previous_exit_code: &FailureType,
@@ -326,7 +345,6 @@ pub fn create_ical(
     let metadata_shifts_hashmap: HashMap<i64, &Shift> =
         metadata.into_iter().map(|x| (x.magic_number, x)).collect();
     let name = get_set_name(None);
-    let admin_email = &properties.support_mail;
     // get the current systemtime as a unix timestamp
     let current_timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -346,7 +364,6 @@ pub fn create_ical(
             heartbeat_interval.to_string().as_str(),
         ))
         .append_property(("X-CAL-VERSION", CALENDAR_VERSION.to_string().as_str()))
-        .append_property(("X-ADMIN-EMAIL", admin_email.as_str()))
         .append_property((
             "X-EXIT-CODE",
             serde_json::to_string(&previous_exit_code)
