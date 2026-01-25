@@ -14,6 +14,10 @@ build_m() {
 }
 
 build_a() {
+    git submodule update
+    cd repo/auth
+    git checkout main
+    cd ../../
     echo "Building mijn_bussie_auth..."
     docker build -t mijn_bussie_auth -f ./auth/Dockerfile ./auth/repo
     docker save mijn_bussie_auth -o "$LOCAL_IMAGES_DIR/mijn_bussie_auth.tar"
@@ -53,6 +57,16 @@ remote_reload() {
         sudo docker compose --profile prod up -d
     "
 }
+
+trap 'echo oh, I am slain; exit' INT
+
+branch=$(git rev-parse --abbrev-ref HEAD)
+
+if [ "$branch" != "main" ];then
+    echo "INCORRECT BRANCH!"
+    exit
+fi
+
 
 # -------- ARGUMENT HANDLING -------- #
 case "$1" in
