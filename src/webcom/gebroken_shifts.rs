@@ -17,7 +17,7 @@ Creates two new shifts and adds them to the list
 Returns the new list
 Does not return most errors as there are a few valid reason this function fails
 */
-pub async fn load_broken_shift_information(
+pub async fn add_broken_shift_information(
     driver: &WebDriver,
     all_shifts: &Vec<Shift>,
 ) -> GenResult<Vec<Shift>> {
@@ -144,13 +144,8 @@ pub fn split_night_shift(shifts: &Vec<Shift>) -> GenResult<Vec<Shift>> {
 }
 
 // Function to stop shifts at midnight. This is a request from Jerry
-pub fn stop_shift_at_midnight(shifts: &Vec<Shift>) -> GenResult<Vec<Shift>> {
-    let (user, _properties) = get_data();
-    let stop = user.user_properties.stop_midnight_shift;
+pub fn stop_shift_at_midnight(shifts: &Vec<Shift>) -> Vec<Shift> {
     let mut temp_shifts: Vec<Shift> = vec![];
-    if !stop {
-        return Ok(shifts.clone());
-    }
     for shift in shifts {
         let mut shift_clone = shift.clone();
         if shift.end_date != shift.date {
@@ -160,7 +155,7 @@ pub fn stop_shift_at_midnight(shifts: &Vec<Shift>) -> GenResult<Vec<Shift>> {
         }
         temp_shifts.push(shift_clone);
     }
-    Ok(temp_shifts)
+    temp_shifts
 }
 
 /*

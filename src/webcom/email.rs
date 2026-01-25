@@ -9,7 +9,7 @@ use lettre::{
     transport::smtp::authentication::Credentials,
 };
 use secrecy::ExposeSecret;
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{collections::HashMap, fs};
 use strfmt::strfmt;
 use time::{Date, macros::format_description};
 use tracing::*;
@@ -415,11 +415,7 @@ pub fn send_errors(errors: &Vec<GenError>, name: &str) -> GenResult<()> {
     Ok(())
 }
 
-pub fn send_welcome_mail(path: &PathBuf, force: bool) -> GenResult<()> {
-    if path.exists() && !force {
-        return Ok(());
-    }
-
+pub fn send_welcome_mail(force: bool) -> GenResult<()> {
     let env = EnvMailVariables::new();
 
     if !env.send_welcome_mail && !force {
@@ -564,6 +560,10 @@ pub fn send_account_deleted_mail(reason: DeletedReason) -> GenResult<()> {
     let login_failure_html = strfmt!(&deletion_html,
         name => get_set_name(None),
         deletion_reason => reason.to_str().to_owned(),
+        visibility => match reason {
+            DeletedReason::NewDead => "hidden",
+            _ => "unset"
+        }.to_owned(),
         sign_up_link => properties.sign_up_url.clone(),
         admin_email => env.mail_error_to.clone()
     )?;
@@ -740,7 +740,7 @@ mod tests {
 
     #[test]
     fn send_welcome_mail_test() -> GenResult<()> {
-        send_welcome_mail(&PathBuf::new(), true)
+        send_welcome_mail(true)
     }
 
     #[test]

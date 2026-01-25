@@ -14,7 +14,6 @@ use crate::database::variables::UserInstanceData;
 use crate::errors::FailureType;
 use crate::errors::ResultLog;
 use crate::errors::SignInFailure;
-use crate::errors::ToString;
 use crate::execution::timer::execution_timer;
 use crate::execution::watchdog::WatchdogRequest;
 use crate::execution::watchdog::watchdog;
@@ -26,7 +25,6 @@ use crate::webcom::deletion::delete_account;
 use crate::webcom::deletion::update_instance_timestamps;
 use crate::webcom::email;
 use crate::webcom::email::create_calendar_link;
-use crate::webcom::ical::get_ical_path;
 use crate::webcom::shift::*;
 use crate::webcom::webcom::webcom_instance;
 use dotenvy::dotenv_override;
@@ -53,10 +51,12 @@ use std::sync::Arc;
 use std::time::Duration;
 use time::macros::format_description;
 use tokio::runtime::Handle;
+use tokio::spawn;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
+use tokio::task::spawn_blocking;
 use tokio::task_local;
 use tokio::time::sleep;
 use tracing::instrument::WithSubscriber;
@@ -325,9 +325,15 @@ async fn user_instance(
             )),
             StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
             StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
-            StartRequest::Welcome => Some(RequestResponse::GenResponse(
-                email::send_welcome_mail(&get_ical_path(), true).to_string(),
-            )),
+            StartRequest::Welcome => {
+                _ = spawn_blocking(|| email::send_welcome_mail(true))
+                    .await
+                    .and_then(|email_result| {
+                        email_result.warn("Sending welcome email");
+                        Ok(())
+                    });
+                Some(RequestResponse::GenResponse("OK".to_owned()))
+            }
             StartRequest::Calendar => return_calendar_response(),
             StartRequest::ExecutionFinished(ref exit_code) => {
                 update_instance_timestamps(exit_code, instance.user_data.clone(), system_request)
@@ -344,11 +350,13 @@ async fn user_instance(
                     thread.abort();
                     true
                 });
-                Some(RequestResponse::GenResponse(
-                    delete_account(user.id, email::DeletedReason::Manual)
-                        .await
-                        .to_string(),
-                ))
+                _ = spawn(delete_account(user.id, email::DeletedReason::Manual))
+                    .await
+                    .and_then(|result| {
+                        result.warn("Account deletion");
+                        Ok(())
+                    });
+                Some(RequestResponse::GenResponse("OK".to_owned()))
             }
             StartRequest::Standing => {
                 Some(RequestResponse::InstanceStanding(StandingInformation::get()))

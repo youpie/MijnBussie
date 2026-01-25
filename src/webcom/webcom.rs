@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::StartRequest;
 use crate::errors::ResultLog;
 use crate::webcom::gebroken_shifts;
+use crate::webcom::ical::{CalendarVersionError, PreviousShifts};
 use crate::webcom::shift::Shift;
 use crate::{
     FALLBACK_URL, GenError, GenResult, MAIN_URL, create_path,
@@ -13,17 +14,18 @@ use crate::{
     webcom::{
         email::{self, send_errors, send_welcome_mail},
         ical::{
-            self, NON_RELEVANT_EVENTS_PATH, RELEVANT_EVENTS_PATH, create_ical, get_ical_path,
-            get_previous_shifts, split_relevant_shifts,
+            self, NON_RELEVANT_EVENTS_PATH, RELEVANT_EVENTS_PATH, create_calendar_file,
+            get_ical_path, get_previous_shifts, split_relevant_shifts,
         },
         parsing::{
-            load_calendar, load_current_month_shifts, load_next_month_shifts,
-            load_previous_month_shifts,
+            load_current_month_shifts, load_next_month_shifts, load_previous_month_shifts,
+            sign_in_and_open_calendar_view,
         },
         webdriver::{get_driver, wait_until_loaded, wait_untill_redirect},
     },
 };
 use dotenvy::var;
+use serde_json::json;
 use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
 use tokio::sync::mpsc::Sender;
@@ -64,13 +66,14 @@ async fn main_program(
                 .map_err(|_| Box::new(FailureType::ConnectError))?
         }
     };
-    load_calendar(&driver, personeelsnummer, password).await?;
+    sign_in_and_open_calendar_view(&driver, personeelsnummer, password).await?;
     wait_until_loaded(&driver).await?;
-
+    let mut send_welcome = false;
     let mut new_shifts = load_current_month_shifts(&driver, logbook).await?;
     let mut non_relevant_shifts = vec![];
     let ical_path = get_ical_path();
     if !ical_path.exists() {
+        send_welcome = true;
         let mut initial_shifts = init_shifts(driver).await?;
         new_shifts.append(&mut initial_shifts.0);
         non_relevant_shifts.append(&mut initial_shifts.1);
@@ -86,42 +89,60 @@ async fn main_program(
     new_shifts.append(&mut load_next_month_shifts(&driver, logbook).await?);
     info!("Found {} shifts", new_shifts.len());
     // If getting previous shift information failed, just create an empty one. Because it will cause a new calendar to be created
-    let mut previous_shifts = get_previous_shifts()
-        .warn_owned("Getting previous shift information")
-        .ok()
-        .flatten()
-        .unwrap_or_default();
+    let mut previous_shifts =
+        match get_previous_shifts().warn_owned("Getting previous shift information") {
+            Ok(Err(CalendarVersionError::BrokenChange)) => PreviousShifts::default(),
+            Ok(Ok(previous_shifs)) => previous_shifs,
+            _ => PreviousShifts::default(),
+        };
     non_relevant_shifts.append(&mut previous_shifts.non_relevant_shifts);
     let previous_relevant_shifts = previous_shifts.relevant_shifts;
 
     // The main send email function will return the broken shifts that are new or have changed.
     // This is because the send email functions uses the previous shifts and scans for new shifts
-    let mut relevant_shifts = match email::send_emails(new_shifts, previous_relevant_shifts) {
+    let relevant_shifts = match email::send_emails(new_shifts, previous_relevant_shifts) {
         Ok(shifts) => shifts,
         Err(err) => return Err(err),
     };
-
+    std::fs::write(
+        create_path("relevant_shifts_debug.json"),
+        json!(&relevant_shifts).to_string().as_bytes(),
+    );
     let non_relevant_shift_len = non_relevant_shifts.len();
-    relevant_shifts.append(&mut non_relevant_shifts);
-    let broken_shifts;
+    let mut all_shifts = relevant_shifts;
+    all_shifts.append(&mut non_relevant_shifts);
+
+    let mut all_shifts_modified;
     if var("SKIP_BROKEN").unwrap_or_default() != "true" {
-        relevant_shifts =
-            gebroken_shifts::load_broken_shift_information(&driver, &relevant_shifts).await?; // Replace the shifts with the newly created list of broken shifts
-        ical::save_partial_shift_files(&relevant_shifts).error("Saving partial shift files");
-        broken_shifts = gebroken_shifts::split_broken_shifts(&relevant_shifts);
+        all_shifts = gebroken_shifts::add_broken_shift_information(&driver, &all_shifts).await?; // Replace the shifts with the newly created list of broken shifts
+        ical::save_partial_shift_files(&all_shifts).error("Saving partial shift files");
+        all_shifts_modified = gebroken_shifts::split_broken_shifts(&all_shifts);
     } else {
-        broken_shifts = relevant_shifts.clone();
+        all_shifts_modified = all_shifts.clone();
     }
-    let midnight_stopped_shifts = gebroken_shifts::stop_shift_at_midnight(&broken_shifts)?;
-    let mut night_split_shifts = gebroken_shifts::split_night_shift(&midnight_stopped_shifts)?;
-    night_split_shifts.sort_by_key(|shift| shift.magic_number);
-    night_split_shifts.dedup();
-    debug!("Saving {} shifts", night_split_shifts.len());
-    let calendar = create_ical(&night_split_shifts, &relevant_shifts, &logbook.state)?;
-    send_welcome_mail(&ical_path, false)?;
+
+    if user.user_properties.stop_midnight_shift {
+        all_shifts_modified = gebroken_shifts::stop_shift_at_midnight(&all_shifts_modified);
+    }
+
+    if user.user_properties.split_night_shift {
+        all_shifts_modified = gebroken_shifts::split_night_shift(&all_shifts_modified)?;
+    }
+
+    all_shifts_modified.sort_by_key(|shift| shift.magic_number); // I do just just for peace of mind, it is probably not needed though
+    all_shifts_modified.dedup();
+
+    debug!("Saving {} shifts", all_shifts.len());
+    let calendar = create_calendar_file(&all_shifts_modified, &all_shifts, &logbook.state)?;
+
     info!("Writing to: {:?}", &ical_path);
     write(ical_path, calendar.as_bytes()).await?;
-    logbook.generate_shift_statistics(&relevant_shifts, non_relevant_shift_len);
+
+    if send_welcome {
+        send_welcome_mail(false)?;
+    }
+
+    logbook.generate_shift_statistics(&all_shifts, non_relevant_shift_len);
     Ok(())
 }
 

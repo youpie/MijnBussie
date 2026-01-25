@@ -148,7 +148,11 @@ pub async fn load_current_month_shifts(
 Logs into webcom, has no logic for when the login fails.
 It will also find and return the first name of the user, this will fail if the login is unsuccesful
 */
-pub async fn load_calendar(driver: &WebDriver, user: Secret, pass: Secret) -> GenResult<()> {
+pub async fn sign_in_and_open_calendar_view(
+    driver: &WebDriver,
+    user: Secret,
+    pass: Secret,
+) -> GenResult<()> {
     info!("Logging in..");
     sign_in_webcom(driver, user, pass).await?;
     info!("Loading rooster..");
@@ -198,4 +202,3 @@ async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenRe
     get_set_name(Some(name));
     Ok(())
 }
-
