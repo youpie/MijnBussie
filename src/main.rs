@@ -445,7 +445,8 @@ async fn get_database_connection() -> DatabaseConnection {
 async fn main() -> GenResult<()> {
     let filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
-        .from_env()?;
+        .from_env()
+        .unwrap();
 
     let stdout_layer = fmt::layer()
         .with_writer(std::io::stdout)
@@ -459,15 +460,16 @@ async fn main() -> GenResult<()> {
         check_env_permissions().unwrap();
     }
 
-    dotenv_override()?;
+    dotenv_override().expect("Failed to read ENV file");
     info!("Starting {APPLICATION_NAME}");
     CryptoProvider::install_default(default_provider()).unwrap();
-    // let args = Args::parse();
 
     let db = get_database_connection().await;
 
     // Apply all pending migrations
-    Migrator::up(&db, None).await?;
+    Migrator::up(&db, None)
+        .await
+        .expect("Failed to apply Database changes");
 
     let (watchdog_tx, mut watchdog_rx) = channel(1);
     _ = watchdog_tx.try_send(WatchdogRequest::FirstTime);
@@ -477,7 +479,9 @@ async fn main() -> GenResult<()> {
     tokio::spawn(execution_timer(instances.clone()));
     tokio::spawn(api(instances.clone(), watchdog_tx));
 
-    watchdog(instances.clone(), &db, &mut watchdog_rx).await?;
+    watchdog(instances.clone(), &db, &mut watchdog_rx)
+        .await
+        .expect("Watchdog error");
 
     info!("Stopping {APPLICATION_NAME}");
     Ok(())
