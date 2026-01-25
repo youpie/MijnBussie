@@ -18,8 +18,9 @@ RUN cargo build --release
 # If we then remove this file and copy the actual files, it will cache the first build. And only compile the main source again, unless you change cargo.toml
 RUN rm -rf src
 COPY src ./src
+RUN touch src/main.rs
 
-RUN cargo build --release
+RUN cargo build --release -p mijn_bussie
 
 # ---- Final Stage ----
 FROM ubuntu:24.04
