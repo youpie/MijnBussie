@@ -131,7 +131,6 @@ pub async fn watchdog(
     loop {
         // Update all users in the database every 30 minutes
         let channel_wait = timeout(Duration::from_secs(60 * 30), receiver.recv()).await;
-        debug!("{channel_wait:?}");
         if let Ok(Some(ref request)) = channel_wait
             && let WatchdogRequest::SingleUser(user) = request
         {

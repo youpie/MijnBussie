@@ -25,7 +25,6 @@ use crate::{
     },
 };
 use dotenvy::var;
-use serde_json::json;
 use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
 use tokio::sync::mpsc::Sender;
@@ -88,10 +87,15 @@ async fn main_program(
     }
     new_shifts.append(&mut load_next_month_shifts(&driver, logbook).await?);
     info!("Found {} shifts", new_shifts.len());
+
+    let mut force_replace = false;
     // If getting previous shift information failed, just create an empty one. Because it will cause a new calendar to be created
     let mut previous_shifts =
         match get_previous_shifts().warn_owned("Getting previous shift information") {
-            Ok(Err(CalendarVersionError::BrokenChange)) => PreviousShifts::default(),
+            Ok(Err(CalendarVersionError::ForceReplace)) => {
+                force_replace = true;
+                PreviousShifts::default()
+            }
             Ok(Ok(previous_shifs)) => previous_shifs,
             _ => PreviousShifts::default(),
         };
@@ -100,14 +104,12 @@ async fn main_program(
 
     // The main send email function will return the broken shifts that are new or have changed.
     // This is because the send email functions uses the previous shifts and scans for new shifts
-    let relevant_shifts = match email::send_emails(new_shifts, previous_relevant_shifts) {
-        Ok(shifts) => shifts,
-        Err(err) => return Err(err),
-    };
-    std::fs::write(
-        create_path("relevant_shifts_debug.json"),
-        json!(&relevant_shifts).to_string().as_bytes(),
-    );
+    let relevant_shifts =
+        match email::send_emails(new_shifts, previous_relevant_shifts, force_replace) {
+            Ok(shifts) => shifts,
+            Err(err) => return Err(err),
+        };
+
     let non_relevant_shift_len = non_relevant_shifts.len();
     let mut all_shifts = relevant_shifts;
     all_shifts.append(&mut non_relevant_shifts);

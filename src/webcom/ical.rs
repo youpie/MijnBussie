@@ -32,8 +32,8 @@ impl ToNaive for time::Date {
 // UPDATE THIS WHENEVER ANYTHING CHANGES IN THE ICAL
 // Add B if it modifies of removes an already existing value
 // Add W if it is wanted to resend the welcome mail
-// Add G if you want to redo broken shifts
-pub const CALENDAR_VERSION: &str = "5B";
+// Add F if you want to force replace relevant shifts
+pub const CALENDAR_VERSION: &str = "6F";
 
 const PREVIOUS_EXECUTION_DATE_PATH: &str = "previous_execution_date.json";
 pub const NON_RELEVANT_EVENTS_PATH: &str = "non_relevant_events.json";
@@ -45,8 +45,8 @@ pub enum CalendarVersionError {
     BreakingChange,
     #[error("Calendar version has changed, and welcome mail is requested")]
     WelcomeChange,
-    #[error("Calendar version has changed, and regenerating broken shifts is requested")]
-    BrokenChange,
+    #[error("Calendar version has changed, and replacing all relevant shifts is required")]
+    ForceReplace,
     #[error("Daily regeneration needed")]
     GeneralRegeneration,
 }
@@ -69,7 +69,7 @@ pub fn load_ical_file(path: &Path) -> GenResult<Calendar> {
                         return Err(Box::new(CalendarVersionError::WelcomeChange));
                     }
                     'G' => {
-                        return Err(Box::new(CalendarVersionError::BrokenChange));
+                        return Err(Box::new(CalendarVersionError::ForceReplace));
                     }
                     _ => {
                         info!("Non beaking change");

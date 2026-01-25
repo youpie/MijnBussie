@@ -11,7 +11,7 @@ use lettre::{
 use secrecy::ExposeSecret;
 use std::{collections::HashMap, fs};
 use strfmt::strfmt;
-use time::{Date, macros::format_description};
+use time::macros::format_description;
 use tracing::*;
 use url::Url;
 
@@ -100,6 +100,7 @@ Returns the list of previously known shifts, updated with new shits
 pub fn send_emails(
     current_shifts: Vec<Shift>,
     previous_shifts: Vec<Shift>,
+    replace_old: bool,
 ) -> GenResult<Vec<Shift>> {
     let env = EnvMailVariables::new();
     let mailer = load_mailer(&env)?;
@@ -114,10 +115,11 @@ pub fn send_emails(
             })
             .collect());
     }
-    Ok(find_send_shift_mails(
+    Ok(attach_shift_status(
         &mailer,
         previous_shifts,
         current_shifts,
+        replace_old,
         &env,
     )?)
 }
@@ -137,16 +139,14 @@ Will be ran twice, If provided new shifts, it will look for updated shifts inste
 Will send an email is send_mail is true
 It doesn't make a lot of sense that this function is in Email
 */
-fn find_send_shift_mails(
+fn attach_shift_status(
     mailer: &SmtpTransport,
     previous_shifts: Vec<Shift>,
     new_shifts: Vec<Shift>,
+    replace_old: bool,
     env: &EnvMailVariables,
 ) -> GenResult<Vec<Shift>> {
-    let current_date: Date = Date::parse(
-        &chrono::offset::Local::now().format("%d-%m-%Y").to_string(),
-        DATE_DESCRIPTION,
-    )?;
+    let current_date = time::OffsetDateTime::now_local()?.date();
     let mut previous_shifts_map = previous_shifts
         .into_iter()
         .map(|shift| (shift.magic_number, shift))
@@ -158,7 +158,12 @@ fn find_send_shift_mails(
         // If the hash of this current shift is found in the previously valid shift list,
         // we know this shift has remained unchanged. So mark it as such
         if let Some(previous_shift) = previous_shifts_map.get_mut(&new_shift.magic_number) {
-            previous_shift.state = ShiftState::Unchanged;
+            if !replace_old {
+                previous_shift.state = ShiftState::Unchanged;
+            } else {
+                new_shift.state = ShiftState::Unchanged;
+                *previous_shift = new_shift
+            }
         } else {
             // if it is not found, we loop over the list of previously known shifts
             for previous_shift in previous_shifts_map.clone() {
@@ -180,6 +185,7 @@ fn find_send_shift_mails(
                     break;
                 }
             }
+
             // If after that loop, no previously known shift with the same start date as the new shift was found
             // we know it is a new shift, so we mark it as such and add it to the list of known shifts
             if new_shift.state != ShiftState::Changed {
@@ -716,6 +722,8 @@ pub fn send_sign_in_succesful() -> GenResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use time::Date;
+
     use super::*;
     #[test]
     fn send_new_shift_mail() -> GenResult<()> {
