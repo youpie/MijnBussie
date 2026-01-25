@@ -6,7 +6,6 @@ WORKDIR /usr/src/mijn_bussie_auth
 COPY vendor ./vendor
 COPY docker_cargo/config.toml ./.cargo/config.toml
 
-COPY src ./src
 COPY Cargo.lock ./
 COPY Cargo.toml ./
 COPY entity ./entity
