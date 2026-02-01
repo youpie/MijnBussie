@@ -128,7 +128,7 @@ async fn send_request(
         Action::Standing => StartRequest::Standing,
     };
     request_sender.try_send(start_request)?;
-    let response = timeout(Duration::from_secs(2), response_receiver.recv())
+    let response = timeout(Duration::from_secs(10), response_receiver.recv())
         .await?
         .result_reason("No response")?;
 
