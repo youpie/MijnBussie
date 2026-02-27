@@ -511,7 +511,8 @@ pub fn send_deletion_warning_mail() -> GenResult<()> {
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
-    let password_change_text = create_new_password_form_html(password_reset_link);
+    let calendar_id = create_ical_filename();
+    let password_change_text = create_new_password_form_html(password_reset_link, &calendar_id);
 
     let login_failure_html = strfmt!(&warning_html,
         name => get_set_name(None),
@@ -602,7 +603,8 @@ pub fn send_incorrect_new_password_mail() -> GenResult<()> {
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
-    let password_change_text = create_new_password_form_html(password_reset_link);
+    let calendar_id = create_ical_filename();
+    let password_change_text = create_new_password_form_html(password_reset_link, &calendar_id);
 
     let login_failure_html = strfmt!(&new_password_fail_html,
         name => get_set_name(None),
@@ -643,12 +645,13 @@ pub fn send_failed_signin_mail(
     let name = get_set_name(None);
     let verbose_error = SignInFailure::to_string(error.error.as_ref());
     let password_reset_link = &properties.password_reset_link;
+    let calendar_id = create_ical_filename();
     let password_change_text = if error
         .error
         .clone()
         .is_some_and(|error| error == SignInFailure::IncorrectCredentials)
     {
-        create_new_password_form_html(password_reset_link)
+        create_new_password_form_html(password_reset_link, &calendar_id)
     } else {
         String::new()
     };
@@ -678,12 +681,12 @@ pub fn send_failed_signin_mail(
     Ok(())
 }
 
-fn create_new_password_form_html(password_reset_link: &str) -> String {
+fn create_new_password_form_html(password_reset_link: &str, calendar_id: &str) -> String {
     format!("
 <tr>
     <td>
         Als je je webcomm wachtwoord hebt veranderd. Vul je nieuwe wachtwoord in met behulp van de volgende link: <br>
-        <a href=\"{password_reset_link}\" style=\"color:#003366; text-decoration:underline;\">{password_reset_link}</a>
+        <a href=\"{password_reset_link}?calendarId={calendar_id}\" style=\"color:#003366; text-decoration:underline;\">{password_reset_link}?calendarId={calendar_id}</a>
     </td>
 </tr>")
 }
