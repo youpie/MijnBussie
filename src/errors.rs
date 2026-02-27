@@ -167,7 +167,10 @@ impl IncorrectCredentialsCount {
             return ResumeReason::NewPassword;
         }
 
-        self.retry_count += 1;
+        if self.error.is_some() {
+            self.retry_count += 1;
+        }
+
         // check if retry counter == reduce_ammount, if not, stop running
         // If incorrect credentials. Never execute unless the password has has changed
         return_value = match self.error.as_ref() {
