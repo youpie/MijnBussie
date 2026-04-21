@@ -221,7 +221,7 @@ pub fn attach_shift_status(
         return new_shifts
             .into_iter()
             .map(|mut shift| {
-                shift.state = ShiftState::New;
+                shift.state = ShiftState::Unchanged;
                 shift
             })
             .collect();

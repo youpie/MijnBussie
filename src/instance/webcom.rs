@@ -1,6 +1,7 @@
+use anyhow::Context;
+use dotenvy::var;
 use std::path::PathBuf;
 use std::sync::Arc;
-use dotenvy::var;
 use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
 use tokio::sync::mpsc::Sender;
@@ -10,7 +11,6 @@ use crate::health::{send_heartbeat, update_calendar_exit_code};
 use crate::{FALLBACK_URL, MAIN_URL};
 
 use super::*;
-
 
 async fn init_shifts(driver: &WebDriver) -> GenResult<(Vec<Shift>, Vec<Shift>)> {
     info!(
@@ -90,15 +90,21 @@ async fn main_program(
                 .map_err(|_| Box::new(FailureType::ConnectError))?
         }
     };
-    parsing::sign_in_and_open_calendar_view(&driver, personeelsnummer, password).await?;
-    webdriver::wait_until_loaded(&driver).await?;
+    parsing::sign_in_and_open_calendar_view(&driver, personeelsnummer, password)
+        .await
+        .context("Signing in")?;
+    webdriver::wait_until_loaded(&driver)
+        .await
+        .context("Waiting until page loaded")?;
     let mut send_welcome = false;
-    let mut new_shifts = parsing::load_current_month_shifts(&driver, logbook).await?;
+    let mut new_shifts = parsing::load_current_month_shifts(&driver, logbook)
+        .await
+        .context("Loading current shifts")?;
     let mut non_relevant_shifts = vec![];
     let ical_path = ical::get_ical_path();
     if !ical_path.exists() {
         send_welcome = true;
-        let mut initial_shifts = init_shifts(driver).await?;
+        let mut initial_shifts = init_shifts(driver).await.context("Initializing shifts")?;
         new_shifts.append(&mut initial_shifts.0);
         non_relevant_shifts.append(&mut initial_shifts.1);
         debug!(
@@ -108,9 +114,17 @@ async fn main_program(
         );
     } else {
         debug!("Existing calendar file found");
-        new_shifts.append(&mut parsing::load_previous_month_shifts(&driver, 0).await?);
+        new_shifts.append(
+            &mut parsing::load_previous_month_shifts(&driver, 0)
+                .await
+                .context("Loading previous months shifts")?,
+        );
     }
-    new_shifts.append(&mut parsing::load_next_month_shifts(&driver, logbook).await?);
+    new_shifts.append(
+        &mut parsing::load_next_month_shifts(&driver, logbook)
+            .await
+            .context("Loading next month shifts")?,
+    );
     info!("Found {} shifts", new_shifts.len());
 
     let mut force_replace = false;
@@ -135,7 +149,7 @@ async fn main_program(
 
     match email::send_emails(&new_and_removed_shifts).warn_owned("Sending shift emails") {
         Ok(_) => (),
-        Err(_) => non_critical_error = Some(FailureType::EmailServer)
+        Err(_) => non_critical_error = Some(FailureType::EmailServer),
     }
 
     let non_relevant_shift_len = non_relevant_shifts.len();
@@ -147,7 +161,9 @@ async fn main_program(
 
     let mut all_shifts_modified;
     if var("SKIP_BROKEN").unwrap_or_default() != "true" {
-        all_shifts = gebroken_shifts::add_broken_shift_information(&driver, &all_shifts).await?; // Replace the shifts with the newly created list of broken shifts
+        all_shifts = gebroken_shifts::add_broken_shift_information(&driver, &all_shifts)
+            .await
+            .context("adding broken shift information")?; // Replace the shifts with the newly created list of broken shifts
         ical::save_partial_shift_files(&all_shifts).error("Saving partial shift files");
         all_shifts_modified = gebroken_shifts::split_broken_shifts(&all_shifts);
     } else {
@@ -166,13 +182,16 @@ async fn main_program(
     all_shifts_modified.dedup();
 
     debug!("Saving {} shifts", all_shifts.len());
-    let calendar = ical::create_calendar_file(&all_shifts_modified, &all_shifts, &logbook.state)?;
+    let calendar = ical::create_calendar_file(&all_shifts_modified, &all_shifts, &logbook.state)
+        .context("Creating calendar file")?;
 
     info!("Writing to: {:?}", &ical_path);
-    write(ical_path, calendar.as_bytes()).await?;
+    write(ical_path, calendar.as_bytes())
+        .await
+        .context("Writing calendar file")?;
 
     if send_welcome {
-        email::send_welcome_mail(false)?;
+        email::send_welcome_mail(false).context("Sending welcome mail")?;
     }
 
     logbook.generate_shift_statistics(&all_shifts, non_relevant_shift_len);

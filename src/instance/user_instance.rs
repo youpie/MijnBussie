@@ -1,3 +1,4 @@
+use std::fs::read_to_string;
 use std::time::Duration;
 
 use tokio::{spawn, task::spawn_blocking, time::sleep};
@@ -103,6 +104,9 @@ pub async fn user_instance(
             }
             StartRequest::Standing => {
                 Some(RequestResponse::InstanceStanding(StandingInformation::get()))
+            },
+            StartRequest::Logs => {
+                Some(RequestResponse::GenResponse(get_logfile().unwrap_or_else(|err| err.to_string())))
             }
             _ => {
                 system_request = true;
@@ -147,4 +151,17 @@ fn log_exit_code(exit_code: &FailureType, last_exit_code: &FailureType) -> Optio
         warn!("Exited with non-OK exit code: {exit_code:?}");
     }
     None
+}
+
+fn get_logfile() -> Result<String> {
+    let path = create_path("logs");
+    let last_modified_file = std::fs::read_dir(path)?
+    .flatten() // Remove failed
+    .filter(|f| f.metadata().unwrap().is_file()) // Filter out directories (only consider files)
+    .max_by_key(|x| x.metadata().unwrap().modified().unwrap()); // Get the most recently modified file
+
+    if let Some(log_file) = last_modified_file {
+        return Ok(read_to_string(log_file.path())?);
+    }
+    Err(anyhow!("No Logfile"))
 }

@@ -75,6 +75,7 @@ pub enum StartRequest {
     Calendar,
     Delete,
     Standing,
+    Logs,
 
     // Webcom request
     ExecutionFinished(FailureType),

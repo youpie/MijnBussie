@@ -28,6 +28,7 @@ pub enum Action {
     Calendar,
     Delete,
     Standing,
+    Logs,
 }
 
 pub async fn refresh_users(
@@ -84,6 +85,7 @@ pub async fn send_request(
         Action::Calendar => StartRequest::Calendar,
         Action::Delete => StartRequest::Delete,
         Action::Standing => StartRequest::Standing,
+        Action::Logs => StartRequest::Logs
     };
     request_sender.try_send(start_request)?;
     let response = timeout(Duration::from_secs(2), response_receiver.recv())
