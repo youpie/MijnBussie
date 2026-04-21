@@ -70,7 +70,8 @@ async fn main_program(
     driver: &WebDriver,
     retry_count: usize,
     logbook: &mut ApplicationLogbook,
-) -> GenResult<()> {
+) -> GenResult<Option<FailureType>> {
+    let mut non_critical_error = None;
     let (user, _properties) = get_data();
     let personeelsnummer = user.personeelsnummer.clone();
     let password = user.password.clone();
@@ -129,14 +130,19 @@ async fn main_program(
 
     // The main send email function will return the broken shifts that are new or have changed.
     // This is because the send email functions uses the previous shifts and scans for new shifts
-    let relevant_shifts =
-        match email::send_emails(new_shifts, previous_relevant_shifts, force_replace) {
-            Ok(shifts) => shifts,
-            Err(err) => return Err(err),
-        };
+    let new_and_removed_shifts =
+        shift::attach_shift_status(new_shifts, previous_relevant_shifts, force_replace);
+
+    match email::send_emails(&new_and_removed_shifts).warn_owned("Sending shift emails") {
+        Ok(_) => (),
+        Err(_) => non_critical_error = Some(FailureType::EmailServer)
+    }
 
     let non_relevant_shift_len = non_relevant_shifts.len();
-    let mut all_shifts = relevant_shifts;
+    let mut all_shifts: Vec<Shift> = new_and_removed_shifts
+        .into_iter()
+        .filter(|shift| shift.state != ShiftState::Deleted)
+        .collect();
     all_shifts.append(&mut non_relevant_shifts);
 
     let mut all_shifts_modified;
@@ -170,7 +176,7 @@ async fn main_program(
     }
 
     logbook.generate_shift_statistics(&all_shifts, non_relevant_shift_len);
-    Ok(())
+    Ok(non_critical_error)
 }
 
 // Create file on disk to show webcom ical is currently active
@@ -256,7 +262,8 @@ pub async fn webcom_instance(
             .await
             .warn_owned("Main Program")
         {
-            Ok(()) => {
+            Ok(Some(non_crit)) => current_exit_code = non_crit,
+            Ok(_) => {
                 failure_counter
                     .update_signin_failure(false, &resume_reason, None)
                     .warn("Updating signin failure");

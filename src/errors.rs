@@ -61,6 +61,9 @@ pub enum FailureType {
     #[error("Ok")]
     #[default]
     OK,
+    // Non Critical errors, but noteworthy
+    #[error("Kon geen verbinding maken met de email server, deze is waarschijnlijk down")]
+    EmailServer,
 }
 
 pub trait OptionResult<T> {

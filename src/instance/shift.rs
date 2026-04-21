@@ -1,10 +1,9 @@
 use std::{
-    hash::{DefaultHasher, Hash, Hasher},
-    str::Split,
+    collections::HashMap, hash::{DefaultHasher, Hash, Hasher}, str::Split
 };
 
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DefaultOnError};
+use serde_with::{DefaultOnError, serde_as};
 use time::{Date, Duration, Time, macros::format_description};
 
 use crate::prelude::*;
@@ -128,7 +127,9 @@ impl Shift {
     // Assumes second shift cannot start after midnight
     // None means no broken times have been found for the shift
     pub fn split_broken(&self) -> Option<Vec<Self>> {
-        if let Some(broken_periods) = self.broken_period.as_deref() && !broken_periods.is_empty() {
+        if let Some(broken_periods) = self.broken_period.as_deref()
+            && !broken_periods.is_empty()
+        {
             let mut split_shifts = vec![];
             for period in broken_periods {
                 let mut part_one = self.clone();
@@ -179,26 +180,101 @@ impl Shift {
     }
 
     pub fn create_shift_link(&self, include_domain: bool) -> Result<String> {
-    let (_user, properties) = get_data();
-    let date_format = format_description!("[day]-[month]-[year]");
-    let formatted_date = self.date.format(date_format)?;
-    let domain = match include_domain {
-        true => &properties.pdf_shift_domain,
-        false => "",
-    };
-    if domain.is_empty() && include_domain == true {
-        return Ok(format!(
-            "https://dmz-wbc-web01.connexxion.nl/WebComm/shiprint.aspx?{}",
+        let (_user, properties) = get_data();
+        let date_format = format_description!("[day]-[month]-[year]");
+        let formatted_date = self.date.format(date_format)?;
+        let domain = match include_domain {
+            true => &properties.pdf_shift_domain,
+            false => "",
+        };
+        if domain.is_empty() && include_domain == true {
+            return Ok(format!(
+                "https://dmz-wbc-web01.connexxion.nl/WebComm/shiprint.aspx?{}",
+                &formatted_date
+            ));
+        }
+        let shift_number_bare = match self.number.split("-").next() {
+            Some(shift_number) => shift_number,
+            None => return Err(anyhow!("Could not get shift number")),
+        };
+        Ok(format!(
+            "{domain}{shift_number_bare}?date={}",
             &formatted_date
-        ));
+        ))
     }
-    let shift_number_bare = match self.number.split("-").next() {
-        Some(shift_number) => shift_number,
-        None => return Err(anyhow!("Could not get shift number")),
-    };
-    Ok(format!(
-        "{domain}{shift_number_bare}?date={}",
-        &formatted_date
-    ))
 }
+
+/*
+Will search for new shifts given previous shifts.
+Will be ran twice, If provided new shifts, it will look for updated shifts instead
+Will send an email is send_mail is true
+It doesn't make a lot of sense that this function is in Email
+*/
+pub fn attach_shift_status(
+    new_shifts: Vec<Shift>,
+    previous_shifts: Vec<Shift>,
+    replace_old: bool,
+) -> Vec<Shift> {
+    if previous_shifts.is_empty() {
+        // if the previous were empty, just return the list of current shifts as all new
+        error!("!!! PREVIOUS SHIFTS WAS EMPTY. SKIPPING !!!");
+        return new_shifts
+            .into_iter()
+            .map(|mut shift| {
+                shift.state = ShiftState::New;
+                shift
+            })
+            .collect();
+    }
+
+    let mut previous_shifts_map = previous_shifts
+        .into_iter()
+        .map(|shift| (shift.magic_number, shift))
+        .collect::<HashMap<i64, Shift>>();
+    // Iterate through the current shifts to check for updates or new shifts
+    // We start with a list of previously valid shifts. All marked as deleted
+    // we will then loop over a list of newly loaded shifts from the website
+    for mut new_shift in new_shifts {
+        // If the hash of this current shift is found in the previously valid shift list,
+        // we know this shift has remained unchanged. So mark it as such
+        if let Some(previous_shift) = previous_shifts_map.get_mut(&new_shift.magic_number) {
+            if !replace_old {
+                previous_shift.state = ShiftState::Unchanged;
+            } else {
+                new_shift.state = ShiftState::Unchanged;
+                *previous_shift = new_shift
+            }
+        } else {
+            // if it is not found, we loop over the list of previously known shifts
+            for previous_shift in previous_shifts_map.clone() {
+                // if during the loop, we find a previously valid shift with the same starting date as the current shift
+                // whereby we assume only 1 shift can be active per day
+                // we know it must have changed, as if it hadn't it would have been found from its hash
+                // so it can be marked as changed
+                // We must first remove the old shift, then add the new shift
+                if previous_shift.1.date == new_shift.date {
+                    match previous_shifts_map.remove(&previous_shift.0) {
+                        Some(_) => (),
+                        None => warn!(
+                            "Tried to remove shift {} as it has been updated, but that failed",
+                            previous_shift.1.number
+                        ),
+                    };
+                    new_shift.state = ShiftState::Changed;
+                    previous_shifts_map.insert(new_shift.magic_number, new_shift.clone());
+                    break;
+                }
+            }
+
+            // If after that loop, no previously known shift with the same start date as the new shift was found
+            // we know it is a new shift, so we mark it as such and add it to the list of known shifts
+            if new_shift.state != ShiftState::Changed {
+                new_shift.state = ShiftState::New;
+                previous_shifts_map.insert(new_shift.magic_number, new_shift);
+            }
+            // Because we only loop over new shifts, all old and deleted shifts do not even get looked at. And since they start as deleted
+            // They will be deleted
+        }
+    }
+    previous_shifts_map.into_values().collect()
 }
