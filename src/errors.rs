@@ -24,6 +24,8 @@ pub enum SignInFailure {
     IncorrectCredentials,
     #[error("Webcomm heeft een storing")]
     WebcomDown,
+    #[error("Deze gebruiker heeft (nog) geen webcomm account")]
+    NoUser,
     #[error("Onbekende fout: {0}")]
     Other(String),
     #[error("Onbekende fout")]
@@ -39,6 +41,7 @@ impl SignInFailure {
             }
             Some(SignInFailure::TooManyTries) => "Te veel incorrecte inlogpogingen…",
             Some(SignInFailure::WebcomDown) => "Webcom heeft op dit moment een storing",
+            Some(SignInFailure::NoUser) => "Je hebt op dit moment nog geen Webcomm account...",
             Some(SignInFailure::Other(fault)) => fault,
             _ => "Een onbekende fout...",
         }
@@ -118,7 +121,8 @@ fn get_sign_in_error_type(text: &str) -> SignInFailure {
             SignInFailure::IncorrectCredentials
         }
         "Te veel verkeerde aanmeldpogingen" => SignInFailure::TooManyTries,
-        _ => SignInFailure::Other(text.to_string()),
+        _ if text.contains("vrijgeschakeld") => SignInFailure::NoUser,
+        _ => SignInFailure::Other(text.to_string())
     }
 }
 
