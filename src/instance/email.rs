@@ -1,8 +1,8 @@
 use crate::database::secret::Secret;
 use crate::errors::IncorrectCredentialsCount;
-use crate::{APPLICATION_NAME, GenError, GenResult, get_data, webcom::shift::ShiftState};
+use crate::{APPLICATION_NAME, GenError, GenResult, get_data, instance::shift::ShiftState};
 use crate::{
-    SignInFailure, create_ical_filename, create_shift_link, get_set_name, webcom::shift::Shift,
+    SignInFailure, create_ical_filename, create_shift_link, get_set_name, instance::shift::Shift,
 };
 use lettre::{
     Message, SmtpTransport, Transport, message::header::ContentType,

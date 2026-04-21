@@ -15,7 +15,7 @@ use crate::{
     database::variables::UserData,
     errors::{FailureType, OptionResult, ResultLog, SignInFailure},
     get_data, get_database_connection,
-    webcom::email::{DeletedReason, send_account_deleted_mail, send_deletion_warning_mail},
+    instance::email::{DeletedReason, send_account_deleted_mail, send_deletion_warning_mail},
 };
 
 // The current system is really messy if you want to update user values from the database,

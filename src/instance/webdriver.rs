@@ -4,7 +4,7 @@ use crate::{
     errors::FailureType,
     get_set_name,
     health::{ApplicationLogbook, send_heartbeat},
-    webcom::email::send_errors,
+    instance::email::send_errors,
 };
 use anyhow::anyhow;
 use dotenvy::var;

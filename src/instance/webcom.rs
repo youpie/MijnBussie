@@ -3,15 +3,15 @@ use std::sync::Arc;
 
 use crate::StartRequest;
 use crate::errors::ResultLog;
-use crate::webcom::gebroken_shifts;
-use crate::webcom::ical::{CalendarVersionError, PreviousShifts};
-use crate::webcom::shift::Shift;
+use crate::instance::gebroken_shifts;
+use crate::instance::ical::{CalendarVersionError, PreviousShifts};
+use crate::instance::shift::Shift;
 use crate::{
     FALLBACK_URL, GenError, GenResult, MAIN_URL, create_path,
     errors::{FailureType, IncorrectCredentialsCount},
     get_data, get_set_name,
     health::{ApplicationLogbook, send_heartbeat, update_calendar_exit_code},
-    webcom::{
+    instance::{
         email::{self, send_errors, send_welcome_mail},
         ical::{
             self, NON_RELEVANT_EVENTS_PATH, RELEVANT_EVENTS_PATH, create_calendar_file,

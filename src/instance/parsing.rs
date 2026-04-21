@@ -1,10 +1,10 @@
 use crate::database::secret::Secret;
 use crate::errors::{OptionResult, check_if_webcom_unavailable, check_sign_in_error};
 use crate::health::ApplicationLogbook;
-use crate::webcom::email::DATE_DESCRIPTION;
-use crate::webcom::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
-use crate::webcom::webdriver::wait_until_loaded;
-use crate::{FailureType, GenResult, get_set_name, webcom::shift::Shift};
+use crate::instance::email::DATE_DESCRIPTION;
+use crate::instance::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
+use crate::instance::webdriver::wait_until_loaded;
+use crate::{FailureType, GenResult, get_set_name, instance::shift::Shift};
 use anyhow::anyhow;
 use async_recursion::async_recursion;
 use secrecy::ExposeSecret;

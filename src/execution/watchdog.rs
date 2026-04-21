@@ -13,7 +13,7 @@ use crate::{
 };
 use crate::{errors::FailureType, kuma::KumaUserRequest};
 use crate::{errors::ResultLog, kuma::KumaAction};
-use crate::{health::ApplicationLogbook, webcom::deletion::StandingInformation};
+use crate::{health::ApplicationLogbook, instance::deletion::StandingInformation};
 use anyhow::anyhow;
 use sea_orm::DatabaseConnection;
 use serde::Serialize;

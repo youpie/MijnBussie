@@ -8,8 +8,8 @@ use crate::{
     FailureType, GenResult, create_path,
     errors::SignInFailure,
     get_data,
-    webcom::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
-    webcom::shift::Shift,
+    instance::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
+    instance::shift::Shift,
 };
 use anyhow::anyhow;
 use chrono::NaiveDateTime;

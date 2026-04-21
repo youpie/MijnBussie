@@ -1,6 +1,6 @@
 use crate::{
     GenResult, create_path, get_data, set_strict_file_permissions,
-    webcom::{email, webcom::ResumeReason},
+    instance::{email, webcom::ResumeReason},
 };
 use anyhow::anyhow;
 use secrecy::ExposeSecret;

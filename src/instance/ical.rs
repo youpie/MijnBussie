@@ -1,8 +1,8 @@
 use crate::{
     FailureType, GenResult, create_ical_filename, create_path, create_shift_link, get_data,
-    get_set_name, webcom::shift::Shift, webcom::shift::ShiftState,
+    get_set_name, instance::shift::Shift, instance::shift::ShiftState,
 };
-use crate::{errors::ResultLog, webcom::email::TIME_DESCRIPTION};
+use crate::{errors::ResultLog, instance::email::TIME_DESCRIPTION};
 use anyhow::anyhow;
 use chrono::{Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use icalendar::{
