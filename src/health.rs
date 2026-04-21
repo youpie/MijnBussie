@@ -11,6 +11,7 @@ use crate::{
     webcom::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
     webcom::shift::Shift,
 };
+use anyhow::anyhow;
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tracing::*;
@@ -80,7 +81,7 @@ impl ApplicationLogbook {
             .duration_since(
                 self.application_state
                     .system_time
-                    .ok_or("Previous system time not set!")?,
+                    .ok_or(anyhow!("Previous system time not set!"))?,
             )
             .and_then(|duration| Ok(duration.as_millis() as u64))
             .unwrap_or_default();

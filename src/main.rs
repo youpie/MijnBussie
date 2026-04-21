@@ -27,6 +27,7 @@ use crate::webcom::email;
 use crate::webcom::email::create_calendar_link;
 use crate::webcom::shift::*;
 use crate::webcom::webcom::webcom_instance;
+use anyhow::anyhow;
 use dotenvy::dotenv_override;
 use dotenvy::var;
 use entity::user_data;
@@ -78,7 +79,7 @@ mod kuma;
 mod webcom;
 
 type GenResult<T> = Result<T, GenError>;
-type GenError = Box<dyn std::error::Error + Send + Sync + 'static>;
+type GenError = anyhow::Error;
 
 task_local! {
     static NAME: RefCell<Option<String>>;
@@ -119,7 +120,7 @@ fn create_shift_link(shift: &Shift, include_domain: bool) -> GenResult<String> {
     }
     let shift_number_bare = match shift.number.split("-").next() {
         Some(shift_number) => shift_number,
-        None => return Err("Could not get shift number".into()),
+        None => return Err(anyhow!("Could not get shift number")),
     };
     Ok(format!(
         "{domain}{shift_number_bare}?date={}",
@@ -200,7 +201,7 @@ async fn update_name(new_name: String, data_id: i32) -> GenResult<()> {
             .await?;
         Ok(())
     } else {
-        Err("UserData not found".into())
+        Err(anyhow!("UserData not found"))
     }
 }
 
@@ -428,7 +429,7 @@ fn check_env_permissions() -> GenResult<()> {
     if file_mode == permissions_target && Some(file_owner) == uid {
         Ok(())
     } else {
-        Err(format!(
+        Err(anyhow!(
             "INCORRECT PERMISSIONS FOR ENV. Should be {permissions_target:o}, is {file_mode:o}. File owner should be {uid:?}, is {file_owner}"
         )
         .into())

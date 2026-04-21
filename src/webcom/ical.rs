@@ -3,6 +3,7 @@ use crate::{
     get_set_name, webcom::shift::Shift, webcom::shift::ShiftState,
 };
 use crate::{errors::ResultLog, webcom::email::TIME_DESCRIPTION};
+use anyhow::anyhow;
 use chrono::{Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use icalendar::{
     Calendar, CalendarComponent, CalendarDateTime, Component, Event, EventLike,
@@ -53,7 +54,7 @@ pub enum CalendarVersionError {
 
 pub fn load_ical_file(path: &Path) -> GenResult<Calendar> {
     let calendar_string = read_to_string(path)?;
-    let calendar: Calendar = read_calendar(&unfold(&calendar_string))?.into();
+    let calendar: Calendar = read_calendar(&unfold(&calendar_string)).map_err(|err| anyhow!("{err}"))?.into();
     // Check if the calendar has changed, and if that change was breaking
     match calendar.property_value("X-CAL-VERSION").unwrap_or_default() {
         version if version != CALENDAR_VERSION => {
@@ -62,14 +63,14 @@ pub fn load_ical_file(path: &Path) -> GenResult<Calendar> {
                 match version_type {
                     'B' => {
                         warn!("Breaking change");
-                        return Err(Box::new(CalendarVersionError::BreakingChange));
+                        return Err(CalendarVersionError::BreakingChange.into());
                     }
                     'W' => {
                         warn!("Welcome change");
-                        return Err(Box::new(CalendarVersionError::WelcomeChange));
+                        return Err(CalendarVersionError::WelcomeChange.into());
                     }
                     'F' => {
-                        return Err(Box::new(CalendarVersionError::ForceReplace));
+                        return Err(CalendarVersionError::ForceReplace.into());
                     }
                     _ => {
                         info!("Non beaking change");

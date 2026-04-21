@@ -14,6 +14,7 @@ use crate::{
 use crate::{errors::FailureType, kuma::KumaUserRequest};
 use crate::{errors::ResultLog, kuma::KumaAction};
 use crate::{health::ApplicationLogbook, webcom::deletion::StandingInformation};
+use anyhow::anyhow;
 use sea_orm::DatabaseConnection;
 use serde::Serialize;
 use time::Time;
@@ -152,7 +153,7 @@ pub async fn watchdog(
             .await
             .warn("Api kuma run");
         } else if channel_wait == Ok(None) {
-            return Err("Notification channel closed".into());
+            return Err(anyhow!("Notification channel closed"));
         } else {
             debug!("Updating users");
             let users = UserData::get_all_usernames(db).await?;

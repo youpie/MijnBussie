@@ -6,6 +6,7 @@ use crate::{
     health::{ApplicationLogbook, send_heartbeat},
     webcom::email::send_errors,
 };
+use anyhow::anyhow;
 use dotenvy::var;
 use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};
 use tracing::*;
@@ -29,7 +30,7 @@ pub async fn get_driver(logbook: &mut ApplicationLogbook) -> GenResult<WebDriver
             send_heartbeat(&FailureType::GeckoEngine)
                 .await
                 .warn("Sending heartbeat");
-            return Err("driver fout".into());
+            return Err(anyhow!("driver fout"));
         }
     }
 }
@@ -74,9 +75,9 @@ pub async fn wait_untill_redirect(driver: &WebDriver) -> GenResult<()> {
 
     if current_url == initial_url {
         warn!("Timeout waiting for redirect.");
-        return Err(Box::new(WebDriverError::Timeout(
-            "Redirect did not occur".into(),
-        )));
+        return Err(
+            anyhow!("Redirect did not occur"),
+        );
     }
 
     debug!("Redirected to: {}", current_url);

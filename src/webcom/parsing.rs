@@ -5,6 +5,7 @@ use crate::webcom::email::DATE_DESCRIPTION;
 use crate::webcom::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
 use crate::webcom::webdriver::wait_until_loaded;
 use crate::{FailureType, GenResult, get_set_name, webcom::shift::Shift};
+use anyhow::anyhow;
 use async_recursion::async_recursion;
 use secrecy::ExposeSecret;
 use thirtyfour::prelude::ElementQueryable;
@@ -27,7 +28,7 @@ async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<
         let text = match element.attr("data-original-title").await? {
             Some(x) => x,
             None => {
-                return Err("no elements in rooster".into());
+                return Err(anyhow!("no elements in rooster"));
             }
         };
         if !text.is_empty() && text.contains("Dienstduur") {
@@ -188,7 +189,7 @@ async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenRe
     let name_text = match driver.find(By::Tag("h3")).await {
         Ok(element) => element.text().await?,
         Err(_) => {
-            return Err(Box::new(check_sign_in_error(driver).await?));
+            return Err(anyhow!(check_sign_in_error(driver).await?).into());
         }
     };
     let name = name_text
