@@ -15,7 +15,7 @@ build_m() {
 
 build_a() {
     git submodule update
-    cd repo/auth
+    cd auth/repo
     git checkout main
     cd ../../
     echo "Building mijn_bussie_auth..."
