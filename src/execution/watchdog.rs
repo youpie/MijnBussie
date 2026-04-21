@@ -3,13 +3,6 @@ use std::{
     sync::{Arc, LazyLock},
     time::Duration,
 };
-
-use crate::{
-    GenResult, database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData}, instance::{InstanceMap, InstanceName, UserInstance}, kuma
-};
-use crate::{kuma::KumaUserRequest};
-use crate::{errors::ResultLog, kuma::KumaAction};
-use anyhow::anyhow;
 use sea_orm::DatabaseConnection;
 use tokio::{
     sync::{
@@ -17,7 +10,12 @@ use tokio::{
         mpsc::Receiver},
     time::timeout,
 };
-use tracing::*;
+
+use crate::{
+    database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData}, instance::{InstanceMap, InstanceName, UserInstance}
+};
+use crate::kuma::{KumaAction,KumaUserRequest,manage_users};
+use crate::prelude::*;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum WatchdogRequest {
@@ -60,7 +58,7 @@ pub async fn watchdog(
             .warn("deleting individual user");
         } else if let Ok(Some(WatchdogRequest::KumaRequest(ref request))) = channel_wait {
             let general_properties = GeneralProperties::load_default_preferences(db).await?;
-            kuma::manage_users(
+            manage_users(
                 vec![request.clone()],
                 &*instances.read().await,
                 &general_properties,
@@ -117,7 +115,7 @@ async fn start_stop_instances(
     add_instances(db, &instances_to_add, &mut active_instances).await;
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await;
     if !first_run {
-        kuma::manage_users(
+        manage_users(
             vec![
                 (
                     KumaAction::Delete,
@@ -175,7 +173,7 @@ async fn update_individual_user(
     }
     add_instances(db, &instances_to_add, active_instances).await;
     refresh_instances(db, &instances_to_refresh, active_instances).await;
-    kuma::manage_users(
+    manage_users(
         vec![
             (
                 KumaAction::Delete,

@@ -1,8 +1,4 @@
-use crate::{
-    GenResult, create_path, get_data, set_strict_file_permissions,
-    instance::{email, webcom::ResumeReason},
-};
-use anyhow::anyhow;
+
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -12,7 +8,13 @@ use std::{
 };
 use thirtyfour::{By, WebDriver};
 use thiserror::Error;
-use tracing::*;
+
+
+use crate::{
+    create_path, get_data, set_strict_file_permissions,
+    instance::{email, webcom::ResumeReason},
+};
+use crate::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Error, Default)]
 pub enum SignInFailure {

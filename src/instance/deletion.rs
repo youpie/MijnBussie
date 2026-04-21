@@ -5,7 +5,6 @@ use entity::{user_data, user_properties};
 use sea_orm::{ActiveValue::Set, EntityTrait, IntoActiveModel};
 use serde::Serialize;
 use tokio::sync::RwLock;
-use tracing::*;
 
 const AUTO_DELETE_DURATION: Duration = Duration::days(31);
 const FRESH_DELETE_DURATION: Duration = Duration::days(1);

@@ -3,19 +3,16 @@ use std::{
     path::PathBuf,
     time::SystemTime,
 };
+use chrono::NaiveDateTime;
+use serde::{Deserialize, Serialize};
+use url::Url;
 
-use crate::{
-    FailureType, GenResult, create_path,
-    errors::SignInFailure,
+use crate::{create_path,
     get_data,
     instance::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
     instance::shift::Shift,
 };
-use anyhow::anyhow;
-use chrono::NaiveDateTime;
-use serde::{Deserialize, Serialize};
-use tracing::*;
-use url::Url;
+use crate::prelude::*;
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ApplicationLogbook {

@@ -6,7 +6,6 @@ const FALLBACK_URL: [&str; 2] = [
 ];
 const APPLICATION_NAME: &str = "Mijn Bussie";
 
-use anyhow::anyhow;
 use dotenvy::dotenv_override;
 use migration::Migrator;
 use migration::MigratorTrait;
