@@ -1,15 +1,9 @@
-use crate::errors::ResultLog;
-use crate::{
-    GenResult,
-    errors::FailureType,
-    get_set_name,
-    health::{ApplicationLogbook, send_heartbeat},
-    instance::email::send_errors,
-};
-use anyhow::anyhow;
 use dotenvy::var;
 use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};
-use tracing::*;
+
+use crate::health::send_heartbeat;
+
+use super::*;
 
 pub async fn initiate_webdriver() -> GenResult<WebDriver> {
     let gecko_ip = var("SELENIUM_URL")?;
@@ -23,7 +17,7 @@ pub async fn get_driver(logbook: &mut ApplicationLogbook) -> GenResult<WebDriver
         Ok(driver) => Ok(driver),
         Err(error) => {
             error!("Kon driver niet opstarten: {:?}", &error);
-            send_errors(&vec![error], &get_set_name(None)).info("Send errors");
+            email::send_errors(&vec![error], &data::get_set_name(None)).info("Send errors");
             logbook
                 .save(&FailureType::GeckoEngine)
                 .warn("Saving Logbook");

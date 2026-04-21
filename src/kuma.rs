@@ -1,7 +1,7 @@
 use crate::database::variables::{GeneralProperties, UserData};
 use crate::errors::OptionResult;
 use crate::errors::ResultLog;
-use crate::execution::watchdog::InstanceMap;
+use crate::instance::InstanceMap;
 use crate::instance::email::{COLOR_GREEN, COLOR_RED};
 use crate::{APPLICATION_NAME, GenResult};
 use kuma_client::monitor::{MonitorGroup, MonitorType};
@@ -14,8 +14,9 @@ use std::str::FromStr;
 use std::time::Duration;
 use strfmt::strfmt;
 use tokio::time::sleep;
-use tracing::*;
 use url::Url;
+
+use crate::prelude::*;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum KumaUserRequest {

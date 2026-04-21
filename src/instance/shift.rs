@@ -5,9 +5,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DefaultOnError};
-use time::{Date, Duration, Time};
+use time::{Date, Duration, Time, macros::format_description};
 
-use crate::{GenResult, errors::OptionResult};
+use crate::prelude::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub enum ShiftState {
@@ -50,7 +50,7 @@ impl Shift {
     Also hashes the string to see if it has been updated
     Looks intimidating, bus is mostly boilerplate + a bit of logic for correctly parsing the duration
     */
-    pub fn new(text: String, date: Date) -> GenResult<Self> {
+    pub fn new(text: String, date: Date) -> Result<Self> {
         let text_clone = text.clone();
         let parts = text_clone.split("\u{a0}• \u{a0}• ");
         let mut location_modifier = 1;
@@ -168,7 +168,7 @@ impl Shift {
     }
 
     // Creates and returns a Time::time from a given string of time eg: 12:34
-    fn get_time(str_time: &str) -> GenResult<Time> {
+    fn get_time(str_time: &str) -> Result<Time> {
         let mut time_split = str_time.split(":");
         let mut hour: u8 = time_split.clone().next().result()?.parse()?;
         let min: u8 = time_split.nth(1).result()?.parse()?;
@@ -177,4 +177,28 @@ impl Shift {
         }
         Ok(Time::from_hms(hour, min, 0)?)
     }
+
+    pub fn create_shift_link(&self, include_domain: bool) -> Result<String> {
+    let (_user, properties) = get_data();
+    let date_format = format_description!("[day]-[month]-[year]");
+    let formatted_date = self.date.format(date_format)?;
+    let domain = match include_domain {
+        true => &properties.pdf_shift_domain,
+        false => "",
+    };
+    if domain.is_empty() && include_domain == true {
+        return Ok(format!(
+            "https://dmz-wbc-web01.connexxion.nl/WebComm/shiprint.aspx?{}",
+            &formatted_date
+        ));
+    }
+    let shift_number_bare = match self.number.split("-").next() {
+        Some(shift_number) => shift_number,
+        None => return Err(anyhow!("Could not get shift number")),
+    };
+    Ok(format!(
+        "{domain}{shift_number_bare}?date={}",
+        &formatted_date
+    ))
+}
 }

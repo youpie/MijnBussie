@@ -1,34 +1,23 @@
-use crate::api::auth::check_api_key;
-use crate::errors::OptionResult;
-use crate::execution::watchdog::{InstanceMap, RequestResponse, WatchdogRequest};
+use crate::execution::watchdog::WatchdogRequest;
+use crate::instance::{RequestResponse, StartRequest};
 use crate::kuma::{KumaAction, KumaUserRequest};
-use crate::{GenResult, StartRequest};
+use crate::{GenResult};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
-use axum::{Json, Router, middleware};
-use axum_server::tls_rustls::RustlsConfig;
+use axum::Json;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::Arc;
+use tokio::sync::mpsc::Receiver;
 use std::time::Duration;
 use strum_macros::EnumString;
-use tokio::sync::RwLock;
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::timeout;
-use tracing::info;
 
-#[derive(Clone)]
-pub struct ServerConfig {
-    map: Arc<RwLock<InstanceMap>>,
-    sender: Sender<WatchdogRequest>,
-}
+use crate::prelude::*;
+use super::*;
 
 #[derive(Clone, EnumString, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all(deserialize = "snake_case"))]
-enum Action {
+pub enum Action {
     Logbook,
     IsActive,
     Name,
@@ -41,38 +30,7 @@ enum Action {
     Standing,
 }
 
-pub async fn api(instance_map: Arc<RwLock<InstanceMap>>, watchdog_sender: Sender<WatchdogRequest>) {
-    let config = ServerConfig {
-        map: instance_map,
-        sender: watchdog_sender,
-    };
-
-    let tls_config = RustlsConfig::from_pem_file(
-        PathBuf::from("cert").join("cert.crt"),
-        PathBuf::from("cert").join("key.key"),
-    )
-    .await
-    .expect("Missing certificate files");
-    let api_routes = Router::new()
-        .route("/{user_name}/{action}", get(get_information))
-        .route("/refresh", get(refresh_users))
-        .route("/refresh/{user_name}", get(refresh_users))
-        .route("/kuma/{action}/{user_name}", get(handle_kuma_request))
-        .layer(middleware::from_fn(check_api_key))
-        .with_state(config);
-
-    let all_routes = Router::new().nest("/api", api_routes);
-
-    axum_server::bind_rustls(
-        std::net::SocketAddr::from_str("0.0.0.0:3000").unwrap(),
-        tls_config,
-    )
-    .serve(all_routes.into_make_service())
-    .await
-    .unwrap();
-}
-
-async fn refresh_users(
+pub async fn refresh_users(
     State(data): State<ServerConfig>,
     user_name: Option<Path<String>>,
 ) -> impl IntoResponse {
@@ -87,7 +45,7 @@ async fn refresh_users(
     send.into_response()
 }
 
-async fn get_information(
+pub async fn get_information(
     State(data): State<ServerConfig>,
     Path((user_name, action)): Path<(String, Action)>,
 ) -> impl IntoResponse {
@@ -110,7 +68,7 @@ async fn get_information(
     }
 }
 
-async fn send_request(
+pub async fn send_request(
     action: Action,
     request_sender: &Sender<StartRequest>,
     response_receiver: &mut Receiver<RequestResponse>,
@@ -135,7 +93,7 @@ async fn send_request(
     Ok(response)
 }
 
-async fn handle_kuma_request(
+pub async fn handle_kuma_request(
     State(data): State<ServerConfig>,
     Path((action, user_name)): Path<(KumaAction, String)>,
 ) -> impl IntoResponse {

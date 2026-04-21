@@ -1,9 +1,5 @@
 use crate::database::secret::Secret;
-use crate::errors::IncorrectCredentialsCount;
-use crate::{APPLICATION_NAME, GenError, GenResult, get_data, instance::shift::ShiftState};
-use crate::{
-    SignInFailure, create_ical_filename, create_shift_link, get_set_name, instance::shift::Shift,
-};
+use crate::{APPLICATION_NAME};
 use lettre::{
     Message, SmtpTransport, Transport, message::header::ContentType,
     transport::smtp::authentication::Credentials,
@@ -11,16 +7,13 @@ use lettre::{
 use secrecy::ExposeSecret;
 use std::{collections::HashMap, fs};
 use strfmt::strfmt;
-use time::macros::format_description;
-use tracing::*;
-use url::Url;
+
+use super::data::get_set_name;
+use super::deletion::DeletedReason;
+use super::*;
 
 const ERROR_VALUE: &str = "HIER HOORT WAT ANDERS DAN DEZE TEKST TE STAAN, CONFIGURATIE INCORRECT";
 const SENDER_NAME: &str = "Peter";
-pub const TIME_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] =
-    format_description!("[hour]:[minute]");
-pub const DATE_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] =
-    format_description!("[day]-[month]-[year]");
 
 pub const COLOR_BASE: &str = "#5F5AD3";
 pub const COLOR_RED: &str = "#a51d2d";
@@ -269,9 +262,9 @@ fn create_send_new_email(
             shift_end => shift.end.format(TIME_DESCRIPTION)?.to_string(),
             shift_duration_hour => shift.duration.whole_hours().to_string(),
             shift_duration_minute => (shift.duration.whole_minutes() % 60).to_string(),
-            shift_link => create_shift_link(shift, false).unwrap_or_default(),
-            bussie_login => if let Ok(url) = create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
-            shift_link_pdf => create_shift_link(shift, true).unwrap_or_default()
+            shift_link => shift.create_shift_link(false).unwrap_or_default(),
+            bussie_login => if let Ok(url) = ical::create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
+            shift_link_pdf => shift.create_shift_link(true).unwrap_or_default()
         )?;
         shift_tables.push_str(&shift_table_clone);
     }
@@ -322,16 +315,9 @@ fn create_footer() -> GenResult<String> {
     let admin_email = &properties.support_mail;
     Ok(    strfmt!(footer_text,
             footer_text => "Je agenda link:",
-            footer_url => create_calendar_link()?.to_string(),
+            footer_url => ical::create_calendar_link()?.to_string(),
             admin_email_comment => format!("Vragen of opmerkingen? Neem contact op met {admin_email}"))
         .unwrap_or_default())
-}
-
-pub fn create_calendar_link() -> GenResult<Url> {
-    let (_user, properties) = get_data();
-    let domain = &properties.ical_domain;
-    let url = Url::parse(domain)?;
-    Ok(url.join(&create_ical_filename())?)
 }
 
 fn send_removed_shifts_mail(
@@ -359,9 +345,9 @@ fn send_removed_shifts_mail(
             shift_end => shift.end.format(TIME_DESCRIPTION)?.to_string().strikethrough(),
             shift_duration_hour => shift.duration.whole_hours().to_string().strikethrough(),
             shift_duration_minute => (shift.duration.whole_minutes() % 60).to_string().strikethrough(),
-            shift_link => create_shift_link(shift, false).unwrap_or_default(),
-            bussie_login => if let Ok(url) = create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
-            shift_link_pdf => create_shift_link(shift, true).unwrap_or_default()
+            shift_link => shift.create_shift_link(false).unwrap_or_default(),
+            bussie_login => if let Ok(url) = ical::create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
+            shift_link_pdf => shift.create_shift_link(true).unwrap_or_default()
         )?;
         shift_tables.push_str(&shift_table_clone);
     }
@@ -437,14 +423,14 @@ pub fn send_welcome_mail(force: bool) -> GenResult<()> {
 
     let name = get_set_name(None);
 
-    let agenda_url = create_calendar_link()?.to_string();
+    let agenda_url = ical::create_calendar_link()?.to_string();
     let agenda_url_webcal = agenda_url.clone().replace("https", "webcal");
     // A lot of email clients don't want to open webcal links. So by pointing to a website which returns a 302 to a webcal link it tricks the email client
     let rewrite_url = &properties.webcal_domain;
     let webcal_rewrite_url = format!(
         "{rewrite_url}{}",
         if !rewrite_url.is_empty() {
-            create_ical_filename()
+            ical::create_ical_filename()
         } else {
             agenda_url_webcal.clone()
         }
@@ -511,7 +497,7 @@ pub fn send_deletion_warning_mail() -> GenResult<()> {
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
-    let calendar_id = create_ical_filename();
+    let calendar_id = ical::create_ical_filename();
     let password_change_text = create_new_password_form_html(password_reset_link, &calendar_id);
 
     let login_failure_html = strfmt!(&warning_html,
@@ -533,26 +519,6 @@ pub fn send_deletion_warning_mail() -> GenResult<()> {
         .body(email_body_html)?;
     mailer.send(&email)?;
     Ok(())
-}
-
-pub enum DeletedReason {
-    OldAge,
-    NewDead,
-    Manual,
-}
-
-impl DeletedReason {
-    fn to_str(&self) -> &'static str {
-        match self {
-            Self::OldAge => {
-                "Mijn Bussie kan al een maand niet inloggen op jouw Webcomm account. We gaan er daarom vanuit dat je geen gebruik meer wilt maken van Mijn Bussie.<br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
-            }
-            Self::NewDead => {
-                "Je hebt je recent aangemeld voor Mijn Bussie, je hebt echt geen juiste inloggevens doorgegeven. <br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
-            }
-            _ => "We hebben je account voor Mijn Bussie verwijderd",
-        }
-    }
 }
 
 pub fn send_account_deleted_mail(reason: DeletedReason) -> GenResult<()> {
@@ -603,7 +569,7 @@ pub fn send_incorrect_new_password_mail() -> GenResult<()> {
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
-    let calendar_id = create_ical_filename();
+    let calendar_id = ical::create_ical_filename();
     let password_change_text = create_new_password_form_html(password_reset_link, &calendar_id);
 
     let login_failure_html = strfmt!(&new_password_fail_html,
@@ -645,7 +611,7 @@ pub fn send_failed_signin_mail(
     let name = get_set_name(None);
     let verbose_error = SignInFailure::to_string(error.error.as_ref());
     let password_reset_link = &properties.password_reset_link;
-    let calendar_id = create_ical_filename();
+    let calendar_id = ical::create_ical_filename();
     let password_change_text = if error
         .error
         .clone()

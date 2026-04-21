@@ -1,44 +1,68 @@
 use std::path::PathBuf;
 use std::sync::Arc;
-
-use crate::StartRequest;
-use crate::errors::ResultLog;
-use crate::instance::gebroken_shifts;
-use crate::instance::ical::{CalendarVersionError, PreviousShifts};
-use crate::instance::shift::Shift;
-use crate::{
-    FALLBACK_URL, GenError, GenResult, MAIN_URL, create_path,
-    errors::{FailureType, IncorrectCredentialsCount},
-    get_data, get_set_name,
-    health::{ApplicationLogbook, send_heartbeat, update_calendar_exit_code},
-    instance::{
-        email::{self, send_errors, send_welcome_mail},
-        ical::{
-            self, NON_RELEVANT_EVENTS_PATH, RELEVANT_EVENTS_PATH, create_calendar_file,
-            get_ical_path, get_previous_shifts, split_relevant_shifts,
-        },
-        parsing::{
-            load_current_month_shifts, load_next_month_shifts, load_previous_month_shifts,
-            sign_in_and_open_calendar_view,
-        },
-        webdriver::{get_driver, wait_until_loaded, wait_untill_redirect},
-    },
-};
 use dotenvy::var;
 use thirtyfour::WebDriver;
 use tokio::fs::{self, write};
 use tokio::sync::mpsc::Sender;
-use tracing::*;
+use tracing_futures::WithSubscriber;
+
+use crate::health::{send_heartbeat, update_calendar_exit_code};
+use crate::{FALLBACK_URL, MAIN_URL};
+
+use super::*;
+
 
 async fn init_shifts(driver: &WebDriver) -> GenResult<(Vec<Shift>, Vec<Shift>)> {
     info!(
         "Existing calendar file not found, adding two extra months of shifts and removing partial calendars"
     );
-    _ = fs::remove_file(PathBuf::from(NON_RELEVANT_EVENTS_PATH)).await;
-    _ = fs::remove_file(PathBuf::from(RELEVANT_EVENTS_PATH)).await;
-    let found_shifts = load_previous_month_shifts(&driver, 2).await?;
+    _ = fs::remove_file(PathBuf::from(ical::NON_RELEVANT_EVENTS_PATH)).await;
+    _ = fs::remove_file(PathBuf::from(ical::RELEVANT_EVENTS_PATH)).await;
+    let found_shifts = parsing::load_previous_month_shifts(&driver, 2).await?;
     debug!("Found a total of {} shifts", found_shifts.len());
-    Ok(split_relevant_shifts(found_shifts))
+    Ok(ical::split_relevant_shifts(found_shifts))
+}
+
+/// If Webcom is running
+/// Return false
+/// if it is not
+/// get the exit code of the previous join handle and set it
+/// spawn a new webcom instance
+pub async fn spawn_webcom_instance(
+    start_request: &StartRequest,
+    exit_code_sender: Arc<Sender<StartRequest>>,
+    thread_store: &mut Option<JoinHandle<FailureType>>,
+    last_exit_code: &mut FailureType,
+) -> bool {
+    if let Some(thread) = thread_store
+        && !thread.is_finished()
+    {
+        return false;
+    } else if let Some(thread) = thread_store {
+        *last_exit_code = thread.await.unwrap_or_default();
+    }
+    let (user, properties) = get_data();
+    *thread_store = Some(tokio::spawn(
+        USER_PROPERTIES
+            .scope(
+                RefCell::new(Some(user)),
+                GENERAL_PROPERTIES.scope(
+                    RefCell::new(Some(properties)),
+                    NAME.scope(
+                        RefCell::new(None),
+                        webcom_instance(start_request.clone(), exit_code_sender),
+                    ),
+                ),
+            )
+            .with_current_subscriber(),
+    ));
+    true
+}
+
+pub fn is_webcom_instance_active(thread_store: &Option<JoinHandle<FailureType>>) -> bool {
+    thread_store
+        .as_ref()
+        .is_some_and(|thread| !thread.is_finished())
 }
 
 // Main program logic that has to run, if it fails it will all be reran.
@@ -53,7 +77,7 @@ async fn main_program(
     driver.delete_all_cookies().await?;
     info!("Loading site: {}..", MAIN_URL);
     match driver.goto(MAIN_URL).await {
-        Ok(_) => wait_untill_redirect(&driver).await?,
+        Ok(_) => webdriver::wait_untill_redirect(&driver).await?,
         Err(_) => {
             error!(
                 "Failed waiting for redirect. Going to fallback {}",
@@ -65,12 +89,12 @@ async fn main_program(
                 .map_err(|_| Box::new(FailureType::ConnectError))?
         }
     };
-    sign_in_and_open_calendar_view(&driver, personeelsnummer, password).await?;
-    wait_until_loaded(&driver).await?;
+    parsing::sign_in_and_open_calendar_view(&driver, personeelsnummer, password).await?;
+    webdriver::wait_until_loaded(&driver).await?;
     let mut send_welcome = false;
-    let mut new_shifts = load_current_month_shifts(&driver, logbook).await?;
+    let mut new_shifts = parsing::load_current_month_shifts(&driver, logbook).await?;
     let mut non_relevant_shifts = vec![];
-    let ical_path = get_ical_path();
+    let ical_path = ical::get_ical_path();
     if !ical_path.exists() {
         send_welcome = true;
         let mut initial_shifts = init_shifts(driver).await?;
@@ -83,22 +107,22 @@ async fn main_program(
         );
     } else {
         debug!("Existing calendar file found");
-        new_shifts.append(&mut load_previous_month_shifts(&driver, 0).await?);
+        new_shifts.append(&mut parsing::load_previous_month_shifts(&driver, 0).await?);
     }
-    new_shifts.append(&mut load_next_month_shifts(&driver, logbook).await?);
+    new_shifts.append(&mut parsing::load_next_month_shifts(&driver, logbook).await?);
     info!("Found {} shifts", new_shifts.len());
 
     let mut force_replace = false;
     // If getting previous shift information failed, just create an empty one. Because it will cause a new calendar to be created
     let mut previous_shifts =
-        match get_previous_shifts().warn_owned("Getting previous shift information") {
-            Ok(Err(CalendarVersionError::ForceReplace)) => {
+        match ical::get_previous_shifts().warn_owned("Getting previous shift information") {
+            Ok(Err(ical::CalendarVersionError::ForceReplace)) => {
                 warn!("Force replacing shifts");
                 force_replace = true;
-                PreviousShifts::default()
+                ical::PreviousShifts::default()
             }
             Ok(Ok(previous_shifs)) => previous_shifs,
-            _ => PreviousShifts::default(),
+            _ => ical::PreviousShifts::default(),
         };
     non_relevant_shifts.append(&mut previous_shifts.non_relevant_shifts);
     let previous_relevant_shifts = previous_shifts.relevant_shifts;
@@ -136,13 +160,13 @@ async fn main_program(
     all_shifts_modified.dedup();
 
     debug!("Saving {} shifts", all_shifts.len());
-    let calendar = create_calendar_file(&all_shifts_modified, &all_shifts, &logbook.state)?;
+    let calendar = ical::create_calendar_file(&all_shifts_modified, &all_shifts, &logbook.state)?;
 
     info!("Writing to: {:?}", &ical_path);
     write(ical_path, calendar.as_bytes()).await?;
 
     if send_welcome {
-        send_welcome_mail(false)?;
+        email::send_welcome_mail(false)?;
     }
 
     logbook.generate_shift_statistics(&all_shifts, non_relevant_shift_len);
@@ -186,7 +210,7 @@ pub async fn webcom_instance(
         .await
         .warn("Creating Lock file");
 
-    let name = get_set_name(None);
+    let name = data::get_set_name(None);
     let mut logbook = ApplicationLogbook::load();
     let mut failure_counter = IncorrectCredentialsCount::load();
 
@@ -217,7 +241,7 @@ pub async fn webcom_instance(
     }
 
     // Load the driver, do an early return if it fails
-    let driver = match get_driver(&mut logbook).await {
+    let driver = match webdriver::get_driver(&mut logbook).await {
         Ok(driver) => driver,
         Err(err) => {
             error!("Failed to get driver! error: {}", err.to_string());
@@ -277,7 +301,7 @@ pub async fn webcom_instance(
         warn!("Errors have occured, but succeded in the end");
     } else {
         current_exit_code = FailureType::TriesExceeded;
-        send_errors(&running_errors, &name).warn("Sending errors in loop");
+        email::send_errors(&running_errors, &name).warn("Sending errors in loop");
     }
 
     _ = driver.quit().await.is_err_and(|_| {

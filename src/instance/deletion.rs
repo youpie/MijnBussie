@@ -10,13 +10,27 @@ use tracing::*;
 const AUTO_DELETE_DURATION: Duration = Duration::days(31);
 const FRESH_DELETE_DURATION: Duration = Duration::days(1);
 
-use crate::{
-    GenResult, create_path,
-    database::variables::UserData,
-    errors::{FailureType, OptionResult, ResultLog, SignInFailure},
-    get_data, get_database_connection,
-    instance::email::{DeletedReason, send_account_deleted_mail, send_deletion_warning_mail},
-};
+use super::*;
+
+pub enum DeletedReason {
+    OldAge,
+    NewDead,
+    Manual,
+}
+
+impl DeletedReason {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            Self::OldAge => {
+                "Mijn Bussie kan al een maand niet inloggen op jouw Webcomm account. We gaan er daarom vanuit dat je geen gebruik meer wilt maken van Mijn Bussie.<br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
+            }
+            Self::NewDead => {
+                "Je hebt je recent aangemeld voor Mijn Bussie, je hebt echt geen juiste inloggevens doorgegeven. <br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
+            }
+            _ => "We hebben je account voor Mijn Bussie verwijderd",
+        }
+    }
+}
 
 // The current system is really messy if you want to update user values from the database,
 // Because you need to write to the instance data from the instance itself, which is not really what I want
@@ -136,7 +150,7 @@ pub async fn check_instance_standing() -> bool {
             std::fs::remove_file(warning_sent_path).warn("Removing warning sent file");
         }
         InstanceStanding::AlmostDeleted => {
-            send_deletion_warning_mail().warn("sending deletion warning");
+            email::send_deletion_warning_mail().warn("sending deletion warning");
             std::fs::write(warning_sent_path, []).warn("writing deletion sent warning");
         }
         InstanceStanding::MustDelete => {
@@ -172,6 +186,6 @@ pub async fn delete_account(user_id: i32, reason: DeletedReason) -> GenResult<()
         .exec(&db)
         .await
         .warn("Removing user properties");
-    send_account_deleted_mail(reason).warn("Sending deletion mail");
+    email::send_account_deleted_mail(reason).warn("Sending deletion mail");
     Ok(())
 }

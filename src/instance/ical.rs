@@ -1,15 +1,10 @@
-use crate::{
-    FailureType, GenResult, create_ical_filename, create_path, create_shift_link, get_data,
-    get_set_name, instance::shift::Shift, instance::shift::ShiftState,
-};
-use crate::{errors::ResultLog, instance::email::TIME_DESCRIPTION};
-use anyhow::anyhow;
 use chrono::{Datelike, Local, Months, NaiveDate, NaiveDateTime, NaiveTime};
 use icalendar::{
     Calendar, CalendarComponent, CalendarDateTime, Component, Event, EventLike,
     parser::{read_calendar, unfold},
 };
 use serde_json::from_str;
+use url::Url;
 use std::{
     collections::HashMap,
     fs::{self, read_to_string, write},
@@ -18,7 +13,8 @@ use std::{
 };
 use thiserror::Error;
 use time::{Date, OffsetDateTime, Time};
-use tracing::*;
+
+use super::*;
 
 trait ToNaive {
     fn to_naive(&self) -> Option<NaiveDate>;
@@ -52,7 +48,7 @@ pub enum CalendarVersionError {
     GeneralRegeneration,
 }
 
-pub fn load_ical_file(path: &Path) -> GenResult<Calendar> {
+pub fn load_ical_file(path: &Path) -> Result<Calendar> {
     let calendar_string = read_to_string(path)?;
     let calendar: Calendar = read_calendar(&unfold(&calendar_string)).map_err(|err| anyhow!("{err}"))?.into();
     // Check if the calendar has changed, and if that change was breaking
@@ -131,8 +127,8 @@ pub fn split_relevant_shifts(shifts: Vec<Shift>) -> (Vec<Shift>, Vec<Shift>) {
 // If false, doesn't need to happen
 // None, unknown, error occured
 fn is_partial_calendar_regeneration_needed(
-    ical_file: &GenResult<Calendar>,
-) -> GenResult<Option<bool>> {
+    ical_file: &Result<Calendar>,
+) -> Result<Option<bool>> {
     if ical_file
         .as_ref()
         .is_err_and(|err| err.downcast_ref::<CalendarVersionError>().is_some())
@@ -148,7 +144,7 @@ fn is_partial_calendar_regeneration_needed(
             return Ok(None);
         }
     };
-    let previous_execution_date = match || -> GenResult<Date> {
+    let previous_execution_date = match || -> Result<Date> {
         let previous_execution_date_str =
             read_to_string(create_path(PREVIOUS_EXECUTION_DATE_PATH))?;
         Ok(from_str::<Date>(&previous_execution_date_str)?)
@@ -201,7 +197,7 @@ fn event_to_shift(events: Vec<Event>) -> Vec<Shift> {
 }
 
 // Save relevant shifts to disk
-pub fn save_partial_shift_files(shifts: &Vec<Shift>) -> GenResult<()> {
+pub fn save_partial_shift_files(shifts: &Vec<Shift>) -> Result<()> {
     let (relevant_shifts, non_relevant_shifts) = split_relevant_shifts(shifts.clone());
     write(
         create_path(RELEVANT_EVENTS_PATH),
@@ -214,6 +210,21 @@ pub fn save_partial_shift_files(shifts: &Vec<Shift>) -> GenResult<()> {
     )
     .warn("Saving non-relevant shifts");
     Ok(())
+}
+
+pub fn create_ical_filename() -> String {
+    let (user, _properties) = get_data();
+    match &user.file_name {
+        value if value.is_empty() => format!("{}.ics", user.user_name),
+        _ => format!("{}.ics", user.file_name),
+    }
+}
+
+pub fn create_calendar_link() -> GenResult<Url> {
+    let (_user, properties) = get_data();
+    let domain = &properties.ical_domain;
+    let url = Url::parse(domain)?;
+    Ok(url.join(&create_ical_filename())?)
 }
 
 #[derive(Debug, Default)]
@@ -230,7 +241,7 @@ pub fn get_ical_path() -> PathBuf {
     ical_path
 }
 
-pub fn get_previous_shifts() -> GenResult<Result<PreviousShifts, CalendarVersionError>> {
+pub fn get_previous_shifts() -> Result<Result<PreviousShifts, CalendarVersionError>> {
     let relevant_events_exist = create_path(RELEVANT_EVENTS_PATH).exists();
     let non_relevant_events_exist = create_path(NON_RELEVANT_EVENTS_PATH).exists();
     let main_ical_path = get_ical_path();
@@ -300,7 +311,7 @@ pub fn get_previous_shifts() -> GenResult<Result<PreviousShifts, CalendarVersion
 }
 
 fn create_event(shift: &Shift, metadata: Option<&&Shift>) -> Event {
-    let shift_link = create_shift_link(shift, true).unwrap_or("ERROR".to_owned());
+    let shift_link = shift.create_shift_link(true).unwrap_or("ERROR".to_owned());
     let cut_off_end_time = if let Some(end_time) = shift.original_end_time {
         format!(
             " ⏺ \nEindtijd - {}",
@@ -341,11 +352,11 @@ pub fn create_calendar_file(
     shifts: &Vec<Shift>,
     metadata: &Vec<Shift>,
     previous_exit_code: &FailureType,
-) -> GenResult<String> {
+) -> Result<String> {
     let (user, properties) = get_data();
     let metadata_shifts_hashmap: HashMap<i64, &Shift> =
         metadata.into_iter().map(|x| (x.magic_number, x)).collect();
-    let name = get_set_name(None);
+    let name = data::get_set_name(None);
     // get the current systemtime as a unix timestamp
     let current_timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
