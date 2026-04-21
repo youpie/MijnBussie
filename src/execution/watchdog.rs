@@ -1,39 +1,21 @@
 use std::{
-    cell::RefCell,
     collections::HashMap,
     sync::{Arc, LazyLock},
     time::Duration,
 };
-
-use crate::{
-    GENERAL_PROPERTIES, GenResult, NAME, StartRequest, USER_PROPERTIES,
-    database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
-    execution::timer::{calculate_initial_execution_time, get_system_time},
-    kuma, user_instance,
-};
-use crate::{errors::FailureType, kuma::KumaUserRequest};
-use crate::{errors::ResultLog, kuma::KumaAction};
-use crate::{health::ApplicationLogbook, webcom::deletion::StandingInformation};
 use sea_orm::DatabaseConnection;
-use serde::Serialize;
-use time::Time;
 use tokio::{
     sync::{
         RwLock,
-        mpsc::{Receiver, Sender, channel},
-    },
-    task::JoinHandle,
+        mpsc::Receiver},
     time::timeout,
 };
-use tracing::*;
-use tracing_futures::Instrument;
 
-#[derive(Debug, PartialEq)]
-enum InstanceState {
-    New,
-    Remain,
-    Remove,
-}
+use crate::{
+    database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData}, instance::{InstanceMap, InstanceName, UserInstance}
+};
+use crate::kuma::{KumaAction,KumaUserRequest,manage_users};
+use crate::prelude::*;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum WatchdogRequest {
@@ -43,80 +25,12 @@ pub enum WatchdogRequest {
     FirstTime,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub enum RequestResponse {
-    Logbook(ApplicationLogbook),
-    Name(String),
-    Active(bool),
-    ExitCode(FailureType),
-    UserData(UserData),
-    GenResponse(String),
-    InstanceStanding(StandingInformation),
+#[derive(Debug, PartialEq)]
+enum InstanceState {
+    New,
+    Remain,
+    Remove,
 }
-
-pub struct UserInstance {
-    pub user_instance_data: UserInstanceData,
-    pub thread_handle: JoinHandle<()>,
-    pub request_sender: Arc<Sender<StartRequest>>,
-    pub response_receiver: RwLock<Receiver<RequestResponse>>,
-    pub execution_time: Time,
-}
-
-impl UserInstance {
-    pub async fn new(user_data: UserInstanceData) -> Self {
-        let user_name = user_data.user_data.read().await.user_name.clone();
-        let span = warn_span!("Instance", user_name);
-        let request_channel = channel(1);
-        let request_sender_arc = Arc::new(request_channel.0);
-        let response_channel = channel(1);
-        let data_clone = user_data.clone();
-        let thread = tokio::spawn(
-            USER_PROPERTIES.scope(
-                RefCell::new(None),
-                GENERAL_PROPERTIES.scope(
-                    RefCell::new(None),
-                    NAME.scope(
-                        RefCell::new(None),
-                        user_instance(
-                            request_channel.1,
-                            response_channel.0,
-                            request_sender_arc.clone(),
-                            data_clone,
-                        )
-                        .instrument(span),
-                    ),
-                ),
-            ),
-        );
-
-        let user_data_clone = user_data.user_data.read().await.clone();
-        let execution_time = calculate_initial_execution_time(
-            user_data_clone.last_system_execution_date,
-            user_data_clone.user_properties.execution_interval_minutes,
-            user_data_clone.user_properties.execution_minute,
-        )
-        .await;
-
-        info!(
-            "Executing user {} in {} minutes",
-            user_data.user_data.read().await.user_name,
-            get_system_time()
-                .duration_until(execution_time)
-                .whole_minutes()
-        );
-        Self {
-            user_instance_data: user_data,
-            thread_handle: thread,
-            request_sender: request_sender_arc,
-            response_receiver: RwLock::new(response_channel.1),
-            execution_time,
-        }
-    }
-}
-
-type InstanceName = String;
-
-pub type InstanceMap = HashMap<InstanceName, UserInstance>;
 
 type RwCell<T> = LazyLock<RwLock<Option<T>>>;
 
@@ -144,7 +58,7 @@ pub async fn watchdog(
             .warn("deleting individual user");
         } else if let Ok(Some(WatchdogRequest::KumaRequest(ref request))) = channel_wait {
             let general_properties = GeneralProperties::load_default_preferences(db).await?;
-            kuma::manage_users(
+            manage_users(
                 vec![request.clone()],
                 &*instances.read().await,
                 &general_properties,
@@ -152,7 +66,7 @@ pub async fn watchdog(
             .await
             .warn("Api kuma run");
         } else if channel_wait == Ok(None) {
-            return Err("Notification channel closed".into());
+            return Err(anyhow!("Notification channel closed"));
         } else {
             debug!("Updating users");
             let users = UserData::get_all_usernames(db).await?;
@@ -201,7 +115,7 @@ async fn start_stop_instances(
     add_instances(db, &instances_to_add, &mut active_instances).await;
     refresh_instances(db, &instances_to_refresh, &mut active_instances).await;
     if !first_run {
-        kuma::manage_users(
+        manage_users(
             vec![
                 (
                     KumaAction::Delete,
@@ -259,7 +173,7 @@ async fn update_individual_user(
     }
     add_instances(db, &instances_to_add, active_instances).await;
     refresh_instances(db, &instances_to_refresh, active_instances).await;
-    kuma::manage_users(
+    manage_users(
         vec![
             (
                 KumaAction::Delete,

@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use axum::{extract::Request, middleware::Next, response::Response};
 use dotenvy::var;
 use reqwest::StatusCode;
-use tracing::error;
+
+use crate::prelude::*;
 
 pub async fn check_api_key(req: Request, next: Next) -> Result<Response, StatusCode> {
     let params = if let Some(query) = req.uri().query() {

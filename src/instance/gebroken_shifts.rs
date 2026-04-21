@@ -1,14 +1,7 @@
-use crate::{
-    GenResult,
-    errors::ResultLog,
-    get_data,
-    webcom::email::{DATE_DESCRIPTION, TIME_DESCRIPTION},
-    webcom::shift::Shift,
-    webcom::shift::ShiftState,
-};
 use thirtyfour::{WebDriver, WebElement, error::WebDriverResult, prelude::*};
 use time::{Duration, Time};
-use tracing::*;
+
+use super::*;
 /*
 Main function for loading broken shifts
 First visits the web page

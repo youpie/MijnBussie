@@ -1,14 +1,9 @@
-use crate::errors::ResultLog;
-use crate::{
-    GenResult,
-    errors::FailureType,
-    get_set_name,
-    health::{ApplicationLogbook, send_heartbeat},
-    webcom::email::send_errors,
-};
 use dotenvy::var;
 use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};
-use tracing::*;
+
+use crate::health::send_heartbeat;
+
+use super::*;
 
 pub async fn initiate_webdriver() -> GenResult<WebDriver> {
     let gecko_ip = var("SELENIUM_URL")?;
@@ -22,14 +17,14 @@ pub async fn get_driver(logbook: &mut ApplicationLogbook) -> GenResult<WebDriver
         Ok(driver) => Ok(driver),
         Err(error) => {
             error!("Kon driver niet opstarten: {:?}", &error);
-            send_errors(&vec![error], &get_set_name(None)).info("Send errors");
+            email::send_errors(&vec![error], &data::get_set_name(None)).info("Send errors");
             logbook
                 .save(&FailureType::GeckoEngine)
                 .warn("Saving Logbook");
             send_heartbeat(&FailureType::GeckoEngine)
                 .await
                 .warn("Sending heartbeat");
-            return Err("driver fout".into());
+            return Err(anyhow!("driver fout"));
         }
     }
 }
@@ -74,9 +69,9 @@ pub async fn wait_untill_redirect(driver: &WebDriver) -> GenResult<()> {
 
     if current_url == initial_url {
         warn!("Timeout waiting for redirect.");
-        return Err(Box::new(WebDriverError::Timeout(
-            "Redirect did not occur".into(),
-        )));
+        return Err(
+            anyhow!("Redirect did not occur"),
+        );
     }
 
     debug!("Redirected to: {}", current_url);

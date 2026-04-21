@@ -9,18 +9,19 @@ members = [".", "entity", "migration"]
 [dependencies]
 entity = { path = "entity" }
 serde = { version = "1.0.219", features = ["derive"] }
-reqwest = "0.13.1"
+reqwest = "0.13.2"
 dotenvy = "0.15.7"
 thirtyfour = "0.36.1"
 tokio = { version = "1.49.0", features = ["full"] }
-time = { version = "0.3.45", features = [
+time = { version = "0.3.47", features = [
     "parsing",
     "macros",
     "formatting",
     "serde",
+    "local-offset"
 ] }
 migration = { path = "migration" }
-kuma-client = { branch = "master", git = "https://github.com/youpie/AutoKuma.git" }
+kuma-client = { branch = "master", git = "https://github.com/BigBoot/AutoKuma.git" }
 url = "2.5.8"
 icalendar = { version = "0.17.6", features = [
     "serde_json",
@@ -52,3 +53,4 @@ tracing-futures = { version = "0.2.5", features = ["tokio"] }
 tower = "0.5.3"
 axum-server = { version = "0.8.0", features = ["rustls", "tls-rustls"] }
 rustls = { version = "0.23.35", features = ["ring"] }
+anyhow = "1.0.102"

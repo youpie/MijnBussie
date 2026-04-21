@@ -1,7 +1,4 @@
-use crate::{
-    GenResult, create_path, get_data, set_strict_file_permissions,
-    webcom::{email, webcom::ResumeReason},
-};
+
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -11,7 +8,13 @@ use std::{
 };
 use thirtyfour::{By, WebDriver};
 use thiserror::Error;
-use tracing::*;
+
+
+use crate::{
+    create_path, get_data, set_strict_file_permissions,
+    instance::{email, webcom::ResumeReason},
+};
+use crate::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Error, Default)]
 pub enum SignInFailure {
@@ -21,6 +24,8 @@ pub enum SignInFailure {
     IncorrectCredentials,
     #[error("Webcomm heeft een storing")]
     WebcomDown,
+    #[error("Deze gebruiker heeft (nog) geen webcomm account")]
+    NoUser,
     #[error("Onbekende fout: {0}")]
     Other(String),
     #[error("Onbekende fout")]
@@ -36,6 +41,7 @@ impl SignInFailure {
             }
             Some(SignInFailure::TooManyTries) => "Te veel incorrecte inlogpogingen…",
             Some(SignInFailure::WebcomDown) => "Webcom heeft op dit moment een storing",
+            Some(SignInFailure::NoUser) => "Je hebt op dit moment nog geen Webcomm account...",
             Some(SignInFailure::Other(fault)) => fault,
             _ => "Een onbekende fout...",
         }
@@ -58,6 +64,9 @@ pub enum FailureType {
     #[error("Ok")]
     #[default]
     OK,
+    // Non Critical errors, but noteworthy
+    #[error("Kon geen verbinding maken met de email server, deze is waarschijnlijk down")]
+    EmailServer,
 }
 
 pub trait OptionResult<T> {
@@ -69,13 +78,13 @@ impl<T> OptionResult<T> for Option<T> {
     fn result(self) -> GenResult<T> {
         match self {
             Some(value) => Ok(value),
-            None => Err("Option Unwrap".into()),
+            None => Err(anyhow!("Option Unwrap")),
         }
     }
     fn result_reason(self, reason: &str) -> GenResult<T> {
         match self {
             Some(value) => Ok(value),
-            None => Err(reason.into()),
+            None => Err(anyhow!("{reason}")),
         }
     }
 }
@@ -89,7 +98,7 @@ pub async fn check_sign_in_error(driver: &WebDriver) -> GenResult<FailureType> {
             info!("Found error banner: {:?}", &sign_in_error_type);
             Ok(FailureType::SignInFailed(sign_in_error_type))
         }
-        Err(_) => Err("Geen fout banner gevonden".into()),
+        Err(_) => Err(anyhow!("Geen fout banner gevonden")),
     }
 }
 
@@ -112,7 +121,8 @@ fn get_sign_in_error_type(text: &str) -> SignInFailure {
             SignInFailure::IncorrectCredentials
         }
         "Te veel verkeerde aanmeldpogingen" => SignInFailure::TooManyTries,
-        _ => SignInFailure::Other(text.to_string()),
+        _ if text.contains("vrijgeschakeld") => SignInFailure::NoUser,
+        _ => SignInFailure::Other(text.to_string())
     }
 }
 

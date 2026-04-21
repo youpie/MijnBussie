@@ -1,26 +1,21 @@
-use crate::database::secret::Secret;
-use crate::errors::IncorrectCredentialsCount;
-use crate::{APPLICATION_NAME, GenError, GenResult, get_data, webcom::shift::ShiftState};
-use crate::{
-    SignInFailure, create_ical_filename, create_shift_link, get_set_name, webcom::shift::Shift,
-};
+use anyhow::Context;
 use lettre::{
     Message, SmtpTransport, Transport, message::header::ContentType,
     transport::smtp::authentication::Credentials,
 };
 use secrecy::ExposeSecret;
-use std::{collections::HashMap, fs};
+use std::fs;
 use strfmt::strfmt;
-use time::macros::format_description;
-use tracing::*;
-use url::Url;
+
+use crate::APPLICATION_NAME;
+use crate::database::secret::Secret;
+
+use super::data::get_set_name;
+use super::deletion::DeletedReason;
+use super::*;
 
 const ERROR_VALUE: &str = "HIER HOORT WAT ANDERS DAN DEZE TEKST TE STAAN, CONFIGURATIE INCORRECT";
 const SENDER_NAME: &str = "Peter";
-pub const TIME_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] =
-    format_description!("[hour]:[minute]");
-pub const DATE_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] =
-    format_description!("[day]-[month]-[year]");
 
 pub const COLOR_BASE: &str = "#5F5AD3";
 pub const COLOR_RED: &str = "#a51d2d";
@@ -97,31 +92,11 @@ If loading previous shifts fails for whatever it will not error but just do an e
 Because if the previous shifts file is not, it will just not send mails that time
 Returns the list of previously known shifts, updated with new shits
 */
-pub fn send_emails(
-    current_shifts: Vec<Shift>,
-    previous_shifts: Vec<Shift>,
-    replace_old: bool,
-) -> GenResult<Vec<Shift>> {
+pub fn send_emails(shifts: &Vec<Shift>) -> Result<()> {
     let env = EnvMailVariables::new();
     let mailer = load_mailer(&env)?;
-    if previous_shifts.is_empty() {
-        // if the previous were empty, just return the list of current shifts as all new
-        error!("!!! PREVIOUS SHIFTS WAS EMPTY. SKIPPING !!!");
-        return Ok(current_shifts
-            .into_iter()
-            .map(|mut shift| {
-                shift.state = ShiftState::New;
-                shift
-            })
-            .collect());
-    }
-    Ok(attach_shift_status(
-        &mailer,
-        previous_shifts,
-        current_shifts,
-        replace_old,
-        &env,
-    )?)
+    send_mail_changed_shifts(&mailer, &env, shifts)?;
+    Ok(())
 }
 
 // Creates SMTPtransport from username, password and server found in env
@@ -133,88 +108,30 @@ fn load_mailer(env: &EnvMailVariables) -> GenResult<SmtpTransport> {
     Ok(mailer)
 }
 
-/*
-Will search for new shifts given previous shifts.
-Will be ran twice, If provided new shifts, it will look for updated shifts instead
-Will send an email is send_mail is true
-It doesn't make a lot of sense that this function is in Email
-*/
-fn attach_shift_status(
+fn send_mail_changed_shifts(
     mailer: &SmtpTransport,
-    previous_shifts: Vec<Shift>,
-    new_shifts: Vec<Shift>,
-    replace_old: bool,
     env: &EnvMailVariables,
-) -> GenResult<Vec<Shift>> {
+    shifts: &Vec<Shift>,
+) -> Result<()> {
     let current_date = time::OffsetDateTime::now_local()?.date();
-    let mut previous_shifts_map = previous_shifts
-        .into_iter()
-        .map(|shift| (shift.magic_number, shift))
-        .collect::<HashMap<i64, Shift>>();
-    // Iterate through the current shifts to check for updates or new shifts
-    // We start with a list of previously valid shifts. All marked as deleted
-    // we will then loop over a list of newly loaded shifts from the website
-    for mut new_shift in new_shifts {
-        // If the hash of this current shift is found in the previously valid shift list,
-        // we know this shift has remained unchanged. So mark it as such
-        if let Some(previous_shift) = previous_shifts_map.get_mut(&new_shift.magic_number) {
-            if !replace_old {
-                previous_shift.state = ShiftState::Unchanged;
-            } else {
-                new_shift.state = ShiftState::Unchanged;
-                *previous_shift = new_shift
-            }
-        } else {
-            // if it is not found, we loop over the list of previously known shifts
-            for previous_shift in previous_shifts_map.clone() {
-                // if during the loop, we find a previously valid shift with the same starting date as the current shift
-                // whereby we assume only 1 shift can be active per day
-                // we know it must have changed, as if it hadn't it would have been found from its hash
-                // so it can be marked as changed
-                // We must first remove the old shift, then add the new shift
-                if previous_shift.1.date == new_shift.date {
-                    match previous_shifts_map.remove(&previous_shift.0) {
-                        Some(_) => (),
-                        None => warn!(
-                            "Tried to remove shift {} as it has been updated, but that failed",
-                            previous_shift.1.number
-                        ),
-                    };
-                    new_shift.state = ShiftState::Changed;
-                    previous_shifts_map.insert(new_shift.magic_number, new_shift.clone());
-                    break;
-                }
-            }
-
-            // If after that loop, no previously known shift with the same start date as the new shift was found
-            // we know it is a new shift, so we mark it as such and add it to the list of known shifts
-            if new_shift.state != ShiftState::Changed {
-                new_shift.state = ShiftState::New;
-                previous_shifts_map.insert(new_shift.magic_number, new_shift);
-            }
-            // Because we only loop over new shifts, all old and deleted shifts do not even get looked at. And since they start as deleted
-            // They will be deleted
-        }
-    }
-    let current_shift_vec: Vec<Shift> = previous_shifts_map.into_values().collect();
-    let mut new_shifts: Vec<&Shift> = current_shift_vec
+    let mut new_shifts: Vec<&Shift> = shifts
         .iter()
         .filter(|item| item.state == ShiftState::New)
         .collect();
-    let mut updated_shifts: Vec<&Shift> = current_shift_vec
+    let mut updated_shifts: Vec<&Shift> = shifts
         .iter()
         .filter(|item| item.state == ShiftState::Changed)
         .collect();
-    let mut removed_shifts: Vec<&Shift> = current_shift_vec
+    let mut removed_shifts: Vec<&Shift> = shifts
         .iter()
         .filter(|item| item.state == ShiftState::Deleted)
         .collect();
-    // debug!("shift vec : {:#?}",current_shift_vec);
-    debug!("Removed shift vec size: {}", removed_shifts.len());
+
     new_shifts.retain(|shift| shift.date >= current_date);
     if !new_shifts.is_empty() && env.send_email_new_shift {
         info!("Found {} new shifts, sending email", new_shifts.len());
-        create_send_new_email(mailer, new_shifts, env, false)?;
+        create_send_new_email(mailer, new_shifts, env, false)
+            .context("Sending new shifts email")?;
     }
     updated_shifts.retain(|shift| shift.date >= current_date);
     if !updated_shifts.is_empty() && env.send_mail_updated_shift {
@@ -222,21 +139,16 @@ fn attach_shift_status(
             "Found {} updated shifts, sending email",
             updated_shifts.len()
         );
-        create_send_new_email(mailer, updated_shifts, env, true)?;
+        create_send_new_email(mailer, updated_shifts, env, true)
+            .context("Sending updated shifts email")?;
     }
+    removed_shifts.retain(|shift| shift.date >= current_date);
     if !removed_shifts.is_empty() && env.send_removed_shift {
         info!("Removing {} shifts", removed_shifts.len());
-        removed_shifts.retain(|shift| shift.date >= current_date);
-        if !removed_shifts.is_empty() {
-            send_removed_shifts_mail(mailer, env, removed_shifts)?;
-        }
+        send_removed_shifts_mail(mailer, env, removed_shifts)
+            .context("Sending removed shifts email")?;
     }
-    // At last remove all shifts marked as removed from the vec
-    let current_shift_vec = current_shift_vec
-        .into_iter()
-        .filter(|shift| shift.state != ShiftState::Deleted)
-        .collect();
-    Ok(current_shift_vec)
+    Ok(())
 }
 
 /*
@@ -269,9 +181,9 @@ fn create_send_new_email(
             shift_end => shift.end.format(TIME_DESCRIPTION)?.to_string(),
             shift_duration_hour => shift.duration.whole_hours().to_string(),
             shift_duration_minute => (shift.duration.whole_minutes() % 60).to_string(),
-            shift_link => create_shift_link(shift, false).unwrap_or_default(),
-            bussie_login => if let Ok(url) = create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
-            shift_link_pdf => create_shift_link(shift, true).unwrap_or_default()
+            shift_link => shift.create_shift_link(false).unwrap_or_default(),
+            bussie_login => if let Ok(url) = ical::create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
+            shift_link_pdf => shift.create_shift_link(true).unwrap_or_default()
         )?;
         shift_tables.push_str(&shift_table_clone);
     }
@@ -322,16 +234,9 @@ fn create_footer() -> GenResult<String> {
     let admin_email = &properties.support_mail;
     Ok(    strfmt!(footer_text,
             footer_text => "Je agenda link:",
-            footer_url => create_calendar_link()?.to_string(),
+            footer_url => ical::create_calendar_link()?.to_string(),
             admin_email_comment => format!("Vragen of opmerkingen? Neem contact op met {admin_email}"))
         .unwrap_or_default())
-}
-
-pub fn create_calendar_link() -> GenResult<Url> {
-    let (_user, properties) = get_data();
-    let domain = &properties.ical_domain;
-    let url = Url::parse(domain)?;
-    Ok(url.join(&create_ical_filename())?)
 }
 
 fn send_removed_shifts_mail(
@@ -359,9 +264,9 @@ fn send_removed_shifts_mail(
             shift_end => shift.end.format(TIME_DESCRIPTION)?.to_string().strikethrough(),
             shift_duration_hour => shift.duration.whole_hours().to_string().strikethrough(),
             shift_duration_minute => (shift.duration.whole_minutes() % 60).to_string().strikethrough(),
-            shift_link => create_shift_link(shift, false).unwrap_or_default(),
-            bussie_login => if let Ok(url) = create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
-            shift_link_pdf => create_shift_link(shift, true).unwrap_or_default()
+            shift_link => shift.create_shift_link(false).unwrap_or_default(),
+            bussie_login => if let Ok(url) = ical::create_calendar_link() {format!("/loginlink/{url}")} else {String::new()},
+            shift_link_pdf => shift.create_shift_link(true).unwrap_or_default()
         )?;
         shift_tables.push_str(&shift_table_clone);
     }
@@ -437,14 +342,14 @@ pub fn send_welcome_mail(force: bool) -> GenResult<()> {
 
     let name = get_set_name(None);
 
-    let agenda_url = create_calendar_link()?.to_string();
+    let agenda_url = ical::create_calendar_link()?.to_string();
     let agenda_url_webcal = agenda_url.clone().replace("https", "webcal");
     // A lot of email clients don't want to open webcal links. So by pointing to a website which returns a 302 to a webcal link it tricks the email client
     let rewrite_url = &properties.webcal_domain;
     let webcal_rewrite_url = format!(
         "{rewrite_url}{}",
         if !rewrite_url.is_empty() {
-            create_ical_filename()
+            ical::create_ical_filename()
         } else {
             agenda_url_webcal.clone()
         }
@@ -511,7 +416,7 @@ pub fn send_deletion_warning_mail() -> GenResult<()> {
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
-    let calendar_id = create_ical_filename();
+    let calendar_id = ical::create_ical_filename();
     let password_change_text = create_new_password_form_html(password_reset_link, &calendar_id);
 
     let login_failure_html = strfmt!(&warning_html,
@@ -533,26 +438,6 @@ pub fn send_deletion_warning_mail() -> GenResult<()> {
         .body(email_body_html)?;
     mailer.send(&email)?;
     Ok(())
-}
-
-pub enum DeletedReason {
-    OldAge,
-    NewDead,
-    Manual,
-}
-
-impl DeletedReason {
-    fn to_str(&self) -> &'static str {
-        match self {
-            Self::OldAge => {
-                "Mijn Bussie kan al een maand niet inloggen op jouw Webcomm account. We gaan er daarom vanuit dat je geen gebruik meer wilt maken van Mijn Bussie.<br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
-            }
-            Self::NewDead => {
-                "Je hebt je recent aangemeld voor Mijn Bussie, je hebt echt geen juiste inloggevens doorgegeven. <br>Daarom hebben we je <b>Mijn Bussie account verwijderd.</b>"
-            }
-            _ => "We hebben je account voor Mijn Bussie verwijderd",
-        }
-    }
 }
 
 pub fn send_account_deleted_mail(reason: DeletedReason) -> GenResult<()> {
@@ -603,7 +488,7 @@ pub fn send_incorrect_new_password_mail() -> GenResult<()> {
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
-    let calendar_id = create_ical_filename();
+    let calendar_id = ical::create_ical_filename();
     let password_change_text = create_new_password_form_html(password_reset_link, &calendar_id);
 
     let login_failure_html = strfmt!(&new_password_fail_html,
@@ -645,7 +530,7 @@ pub fn send_failed_signin_mail(
     let name = get_set_name(None);
     let verbose_error = SignInFailure::to_string(error.error.as_ref());
     let password_reset_link = &properties.password_reset_link;
-    let calendar_id = create_ical_filename();
+    let calendar_id = ical::create_ical_filename();
     let password_change_text = if error
         .error
         .clone()

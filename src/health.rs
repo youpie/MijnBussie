@@ -3,18 +3,16 @@ use std::{
     path::PathBuf,
     time::SystemTime,
 };
-
-use crate::{
-    FailureType, GenResult, create_path,
-    errors::SignInFailure,
-    get_data,
-    webcom::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
-    webcom::shift::Shift,
-};
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
-use tracing::*;
 use url::Url;
+
+use crate::{create_path,
+    get_data,
+    instance::ical::{CALENDAR_VERSION, get_ical_path, load_ical_file},
+    instance::shift::Shift,
+};
+use crate::prelude::*;
 
 #[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct ApplicationLogbook {
@@ -80,7 +78,7 @@ impl ApplicationLogbook {
             .duration_since(
                 self.application_state
                     .system_time
-                    .ok_or("Previous system time not set!")?,
+                    .ok_or(anyhow!("Previous system time not set!"))?,
             )
             .and_then(|duration| Ok(duration.as_millis() as u64))
             .unwrap_or_default();

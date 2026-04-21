@@ -1,16 +1,14 @@
-use crate::database::secret::Secret;
-use crate::errors::{OptionResult, check_if_webcom_unavailable, check_sign_in_error};
-use crate::health::ApplicationLogbook;
-use crate::webcom::email::DATE_DESCRIPTION;
-use crate::webcom::gebroken_shifts::{navigate_to_subdirectory, wait_for_response};
-use crate::webcom::webdriver::wait_until_loaded;
-use crate::{FailureType, GenResult, get_set_name, webcom::shift::Shift};
 use async_recursion::async_recursion;
 use secrecy::ExposeSecret;
 use thirtyfour::prelude::ElementQueryable;
 use thirtyfour::{By, WebDriver};
 use time::{Date, Month};
-use tracing::*;
+
+use crate::database::secret::Secret;
+use crate::health::ApplicationLogbook;
+use super::webdriver::*;
+use super::gebroken_shifts::*;
+use super::*;
 
 /*
 Checks all supplied WebElements, it checks if the day contains the text "Dienstuur"  and if so, adds it to a Vec of valid shifts in the calendar
@@ -27,7 +25,7 @@ async fn get_elements(driver: &WebDriver, month: Month, year: i32) -> GenResult<
         let text = match element.attr("data-original-title").await? {
             Some(x) => x,
             None => {
-                return Err("no elements in rooster".into());
+                return Err(anyhow!("no elements in rooster"));
             }
         };
         if !text.is_empty() && text.contains("Dienstduur") {
@@ -188,7 +186,7 @@ async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenRe
     let name_text = match driver.find(By::Tag("h3")).await {
         Ok(element) => element.text().await?,
         Err(_) => {
-            return Err(Box::new(check_sign_in_error(driver).await?));
+            return Err(anyhow!(check_sign_in_error(driver).await?).into());
         }
     };
     let name = name_text
@@ -199,6 +197,6 @@ async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenRe
         .next()
         .result()?
         .to_string();
-    get_set_name(Some(name));
+    data::get_set_name(Some(name));
     Ok(())
 }
