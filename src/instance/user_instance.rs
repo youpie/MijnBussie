@@ -1,14 +1,14 @@
 use std::fs::read_to_string;
 use std::time::Duration;
 
-use tokio::{spawn, task::spawn_blocking, time::sleep};
+use tokio::{task::spawn_blocking, time::sleep};
 use tracing::instrument::WithSubscriber;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking;
 use tracing_subscriber::EnvFilter;
 
-use super::webcom::*;
 use super::deletion::*;
+use super::webcom::*;
 use super::*;
 
 /*
@@ -80,9 +80,13 @@ pub async fn user_instance(
             }
             StartRequest::Calendar => return_calendar_response(),
             StartRequest::ExecutionFinished(ref exit_code) => {
-                deletion::update_instance_timestamps(exit_code, instance.user_data.clone(), system_request)
-                    .await
-                    .warn("Updating instance timestamps");
+                deletion::update_instance_timestamps(
+                    exit_code,
+                    instance.user_data.clone(),
+                    system_request,
+                )
+                .await
+                .warn("Updating instance timestamps");
                 system_request = false;
                 deletion::check_instance_standing().await;
                 last_exit_code = exit_code.clone();
@@ -94,20 +98,17 @@ pub async fn user_instance(
                     thread.abort();
                     true
                 });
-                _ = spawn(deletion::delete_account(user.id, DeletedReason::Manual))
+                _ = deletion::delete_account(user.id, DeletedReason::Manual)
                     .await
-                    .and_then(|result| {
-                        result.warn("Account deletion");
-                        Ok(())
-                    });
+                    .warn("Account deletion");
                 Some(RequestResponse::GenResponse("OK".to_owned()))
             }
             StartRequest::Standing => {
                 Some(RequestResponse::InstanceStanding(StandingInformation::get()))
-            },
-            StartRequest::Logs => {
-                Some(RequestResponse::GenResponse(get_logfile().unwrap_or_else(|err| err.to_string())))
             }
+            StartRequest::Logs => Some(RequestResponse::GenResponse(
+                get_logfile().unwrap_or_else(|err| err.to_string()),
+            )),
             _ => {
                 system_request = true;
                 spawn_webcom_instance(
@@ -130,7 +131,7 @@ pub async fn user_instance(
         }
     }
     warn!("Killing instance, bye👋");
-    sleep(Duration::from_hours(12)).await;
+    sleep(Duration::from_mins(40)).await;
     warn!("Manually killing instance after waiting");
 }
 
@@ -156,9 +157,9 @@ fn log_exit_code(exit_code: &FailureType, last_exit_code: &FailureType) -> Optio
 fn get_logfile() -> Result<String> {
     let path = create_path("logs");
     let last_modified_file = std::fs::read_dir(path)?
-    .flatten() // Remove failed
-    .filter(|f| f.metadata().unwrap().is_file()) // Filter out directories (only consider files)
-    .max_by_key(|x| x.metadata().unwrap().modified().unwrap()); // Get the most recently modified file
+        .flatten() // Remove failed
+        .filter(|f| f.metadata().unwrap().is_file()) // Filter out directories (only consider files)
+        .max_by_key(|x| x.metadata().unwrap().modified().unwrap()); // Get the most recently modified file
 
     if let Some(log_file) = last_modified_file {
         return Ok(read_to_string(log_file.path())?);
