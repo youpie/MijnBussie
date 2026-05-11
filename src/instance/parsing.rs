@@ -4,11 +4,11 @@ use thirtyfour::prelude::ElementQueryable;
 use thirtyfour::{By, WebDriver};
 use time::{Date, Month};
 
+use super::gebroken_shifts::*;
+use super::webdriver::*;
+use super::*;
 use crate::database::secret::Secret;
 use crate::health::ApplicationLogbook;
-use super::webdriver::*;
-use super::gebroken_shifts::*;
-use super::*;
 
 /*
 Checks all supplied WebElements, it checks if the day contains the text "Dienstuur"  and if so, adds it to a Vec of valid shifts in the calendar
@@ -71,7 +71,7 @@ pub async fn load_previous_month_shifts(
     extra_months_back: usize,
 ) -> GenResult<Vec<Shift>> {
     debug!("Loading Previous Month..");
-    let now = time::OffsetDateTime::now_utc();
+    let now = time::OffsetDateTime::now_local()?;
     let today = now.date();
     let mut new_month = today.month().previous();
     let mut new_year = if new_month == Month::December {
@@ -112,7 +112,7 @@ pub async fn load_next_month_shifts(
     logbook: &mut ApplicationLogbook,
 ) -> GenResult<Vec<Shift>> {
     debug!("Loading Next Month..");
-    let now = time::OffsetDateTime::now_utc();
+    let now = time::OffsetDateTime::now_local()?;
     let today = now.date();
     let new_month = today.month().next();
     let new_year = if new_month == Month::January {
@@ -135,7 +135,7 @@ pub async fn load_current_month_shifts(
     driver: &WebDriver,
     logbook: &mut ApplicationLogbook,
 ) -> GenResult<Vec<Shift>> {
-    let now = time::OffsetDateTime::now_utc();
+    let now = time::OffsetDateTime::now_local()?;
     let today = now.date();
     let shifts = get_elements(&driver, today.month(), today.year()).await?;
     logbook.add_failed_shifts(shifts.1, false);

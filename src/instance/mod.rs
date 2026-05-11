@@ -1,42 +1,40 @@
-use std::{
-    cell::RefCell,
-    collections::HashMap, sync::Arc,
-};
 use serde::Serialize;
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 use time::{Time, macros::format_description};
 use tokio::{
     sync::{
         RwLock,
         mpsc::{Receiver, Sender, channel},
     },
-    task::JoinHandle, task_local,
+    task::JoinHandle,
+    task_local,
 };
 use tracing_futures::Instrument;
 
+use crate::errors::FailureType;
 use crate::execution::timer::{calculate_initial_execution_time, get_system_time};
-use crate::{errors::FailureType};
-use crate::{health::ApplicationLogbook};
+use crate::health::ApplicationLogbook;
 
-pub use self::data::{get_data,set_data};
+pub use self::data::{get_data, set_data};
 pub use self::shift::*;
-pub use crate::prelude::*;
 pub use crate::database::{get_database_connection, variables::*};
+pub use crate::prelude::*;
 
 pub const TIME_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] =
     format_description!("[hour]:[minute]");
 pub const DATE_DESCRIPTION: &[time::format_description::BorrowedFormatItem<'_>] =
     format_description!("[day]-[month]-[year]");
 
-pub mod email;
-pub mod ical;
-pub mod shift;
-pub mod webcom;
 pub mod data;
-mod webdriver;
-mod user_instance;
-mod parsing;
-mod gebroken_shifts;
 mod deletion;
+pub mod email;
+mod gebroken_shifts;
+pub mod ical;
+mod parsing;
+pub mod shift;
+mod user_instance;
+pub mod webcom;
+mod webdriver;
 
 task_local! {
     static NAME: RefCell<Option<String>>;
@@ -52,11 +50,25 @@ pub type InstanceMap = HashMap<InstanceName, UserInstance>;
 pub enum RequestResponse {
     Logbook(ApplicationLogbook),
     Name(String),
-    Active(bool),
+    Active(ActiveState),
+    Started(Started),
     ExitCode(FailureType),
     UserData(UserData),
     GenResponse(String),
     InstanceStanding(deletion::StandingInformation),
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum ActiveState {
+    Active,
+    SignedIn,
+    Dead,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum Started {
+    Started,
+    AlreadyActive,
 }
 
 #[allow(dead_code)]
@@ -79,6 +91,7 @@ pub enum StartRequest {
 
     // Webcom request
     ExecutionFinished(FailureType),
+    SignedIn,
 }
 
 pub struct UserInstance {

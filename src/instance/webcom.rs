@@ -31,38 +31,51 @@ async fn init_shifts(driver: &WebDriver) -> GenResult<(Vec<Shift>, Vec<Shift>)> 
 pub async fn spawn_webcom_instance(
     start_request: &StartRequest,
     exit_code_sender: Arc<Sender<StartRequest>>,
-    thread_store: &mut Option<JoinHandle<FailureType>>,
+    thread_store: &mut Option<(JoinHandle<FailureType>, bool)>,
     last_exit_code: &mut FailureType,
-) -> bool {
+) -> Started {
     if let Some(thread) = thread_store
-        && !thread.is_finished()
+        && !thread.0.is_finished()
     {
-        return false;
-    } else if let Some(thread) = thread_store {
+        return Started::AlreadyActive;
+    } else if let Some((thread, _)) = thread_store {
         *last_exit_code = thread.await.unwrap_or_default();
     }
     let (user, properties) = get_data();
-    *thread_store = Some(tokio::spawn(
-        USER_PROPERTIES
-            .scope(
-                RefCell::new(Some(user)),
-                GENERAL_PROPERTIES.scope(
-                    RefCell::new(Some(properties)),
-                    NAME.scope(
-                        RefCell::new(None),
-                        webcom_instance(start_request.clone(), exit_code_sender),
+    *thread_store = Some((
+        tokio::spawn(
+            USER_PROPERTIES
+                .scope(
+                    RefCell::new(Some(user)),
+                    GENERAL_PROPERTIES.scope(
+                        RefCell::new(Some(properties)),
+                        NAME.scope(
+                            RefCell::new(None),
+                            webcom_instance(start_request.clone(), exit_code_sender),
+                        ),
                     ),
-                ),
-            )
-            .with_current_subscriber(),
+                )
+                .with_current_subscriber(),
+        ),
+        false,
     ));
-    true
+    Started::Started
 }
 
-pub fn is_webcom_instance_active(thread_store: &Option<JoinHandle<FailureType>>) -> bool {
-    thread_store
-        .as_ref()
-        .is_some_and(|thread| !thread.is_finished())
+pub fn is_webcom_instance_active(
+    thread_store: &Option<(JoinHandle<FailureType>, bool)>,
+) -> ActiveState {
+    if let Some(state) = thread_store
+        && !state.0.is_finished()
+    {
+        if state.1 {
+            ActiveState::SignedIn
+        } else {
+            ActiveState::Active
+        }
+    } else {
+        ActiveState::Dead
+    }
 }
 
 // Main program logic that has to run, if it fails it will all be reran.
@@ -70,6 +83,7 @@ async fn main_program(
     driver: &WebDriver,
     retry_count: usize,
     logbook: &mut ApplicationLogbook,
+    sender: Arc<Sender<StartRequest>>,
 ) -> GenResult<Option<FailureType>> {
     let mut non_critical_error = None;
     let (user, _properties) = get_data();
@@ -93,6 +107,21 @@ async fn main_program(
     parsing::sign_in_and_open_calendar_view(&driver, personeelsnummer, password)
         .await
         .context("Signing in")?;
+    // After the last function, signing in was succesful. So return that to the instance
+    sender
+        .send(StartRequest::SignedIn)
+        .await
+        .warn("Informing sign in");
+
+    #[cfg(debug_assertions)]
+    {
+        error!("Sent sign in message");
+        use std::time::Duration;
+
+        use tokio::time::sleep;
+
+        sleep(Duration::from_secs(60)).await;
+    }
     webdriver::wait_until_loaded(&driver)
         .await
         .context("Waiting until page loaded")?;
@@ -277,7 +306,7 @@ pub async fn webcom_instance(
     };
 
     while retry_count < max_retry_count && allow_execution {
-        match main_program(&driver, retry_count, &mut logbook)
+        match main_program(&driver, retry_count, &mut logbook, sender.clone())
             .await
             .warn_owned("Main Program")
         {

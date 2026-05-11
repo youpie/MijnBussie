@@ -41,7 +41,8 @@ pub async fn user_instance(
     debug!("starting");
 
     let mut system_request = false;
-    let mut webcom_thread: Option<JoinHandle<FailureType>> = None;
+    // Bool = signedin
+    let mut webcom_thread: Option<(JoinHandle<FailureType>, bool)> = None;
     let mut last_exit_code = ApplicationLogbook::load().state;
     let mut instance_active = true;
 
@@ -57,7 +58,7 @@ pub async fn user_instance(
             StartRequest::IsActive => Some(RequestResponse::Active(is_webcom_instance_active(
                 &webcom_thread,
             ))),
-            StartRequest::Api => Some(RequestResponse::Active(
+            StartRequest::Api => Some(RequestResponse::Started(
                 webcom::spawn_webcom_instance(
                     &start_request,
                     meta_sender.clone(),
@@ -79,23 +80,10 @@ pub async fn user_instance(
                 Some(RequestResponse::GenResponse("OK".to_owned()))
             }
             StartRequest::Calendar => return_calendar_response(),
-            StartRequest::ExecutionFinished(ref exit_code) => {
-                deletion::update_instance_timestamps(
-                    exit_code,
-                    instance.user_data.clone(),
-                    system_request,
-                )
-                .await
-                .warn("Updating instance timestamps");
-                system_request = false;
-                deletion::check_instance_standing().await;
-                last_exit_code = exit_code.clone();
-                log_exit_code(exit_code, &last_exit_code)
-            }
             StartRequest::Delete => {
                 instance_active = false;
                 _ = webcom_thread.as_ref().is_some_and(|thread| {
-                    thread.abort();
+                    thread.0.abort();
                     true
                 });
                 _ = deletion::delete_account(user.id, DeletedReason::Manual)
@@ -109,6 +97,25 @@ pub async fn user_instance(
             StartRequest::Logs => Some(RequestResponse::GenResponse(
                 get_logfile().unwrap_or_else(|err| err.to_string()),
             )),
+            StartRequest::ExecutionFinished(ref exit_code) => {
+                deletion::update_instance_timestamps(
+                    exit_code,
+                    instance.user_data.clone(),
+                    system_request,
+                )
+                .await
+                .warn("Updating instance timestamps");
+                system_request = false;
+                deletion::check_instance_standing().await;
+                last_exit_code = exit_code.clone();
+                log_exit_code(exit_code, &last_exit_code)
+            }
+            StartRequest::SignedIn => {
+                if let Some((_, signin)) = webcom_thread.as_mut() {
+                    *signin = true;
+                }
+                None
+            }
             _ => {
                 system_request = true;
                 spawn_webcom_instance(
