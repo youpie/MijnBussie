@@ -32,18 +32,19 @@ pub fn get_set_name_local(user: &UserData, set_new_name: Option<String>) -> Stri
     // Then try the global variable
     // Then try the Local database variable (which is not set the first time the instance is ever run)
     // So if this is called before the first time the instance is run, it wil return "Onbekend"
-    let name = set_new_name
+    let name_option = set_new_name
         .as_deref()
         .unwrap_or(
             NAME.get().borrow().as_deref().unwrap_or(
                 user.name
                     .as_ref()
-                    .and_then(|secret| Some(secret.0.expose_secret()))
-                    .unwrap_or(&user.user_name),
+                    .and_then(|secret| Some(secret.0.expose_secret())).unwrap_or_default()     
             ),
-        )
-        .to_owned();
-
+        ).to_owned();
+    let name = if name_option.is_empty() {(&user.user_name).to_owned()} else {
+        NAME.get().replace(Some(name_option.clone()));
+        name_option
+    };
     // Open a database connection and write the new name to the database, if a new name request is done
     if let Some(new_name) = set_new_name
         && Some(new_name.as_str()) != NAME.get().borrow().as_deref()
@@ -53,7 +54,7 @@ pub fn get_set_name_local(user: &UserData, set_new_name: Option<String>) -> Stri
         })
         .warn("Setting name");
     }
-    NAME.get().replace(Some(name.clone()));
+    
     name
 }
 
