@@ -6,6 +6,10 @@ const FALLBACK_URL: [&str; 2] = [
 ];
 const APPLICATION_NAME: &str = "Mijn Bussie";
 
+use crate::execution::watchdog::WatchdogRequest;
+use crate::execution::*;
+use crate::instance::InstanceMap;
+use crate::prelude::*;
 use dotenvy::dotenv_override;
 use migration::Migrator;
 use migration::MigratorTrait;
@@ -25,18 +29,14 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::Registry;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
-use crate::execution::watchdog::WatchdogRequest;
-use crate::instance::InstanceMap;
-use crate::prelude::*;
-use crate::execution::*;
 
 mod api;
 mod database;
 mod errors;
 mod execution;
 mod health;
-mod kuma;
 mod instance;
+mod kuma;
 mod prelude;
 
 pub fn create_path_local(
@@ -115,7 +115,7 @@ async fn main() -> GenResult<()> {
         .await
         .expect("Failed to apply Database changes");
 
-    let (watchdog_tx, mut watchdog_rx) = channel(1);
+    let (watchdog_tx, mut watchdog_rx) = channel(2);
     _ = watchdog_tx.try_send(WatchdogRequest::FirstTime);
 
     let instances: Arc<RwLock<InstanceMap>> = Arc::new(RwLock::new(HashMap::new()));

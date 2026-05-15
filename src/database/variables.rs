@@ -163,6 +163,7 @@ pub struct UserData {
     pub last_system_execution_date: Option<NaiveDateTime>,
     pub last_execution_date: Option<NaiveDateTime>,
     pub creation_date: NaiveDateTime,
+    pub online_created: bool,
 }
 
 impl UserData {

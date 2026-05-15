@@ -22,6 +22,7 @@ pub struct Model {
     pub last_execution_date: Option<DateTime>,
     pub creation_date: DateTime,
     pub last_system_execution_date: Option<DateTime>,
+    pub online_created: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
