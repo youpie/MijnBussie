@@ -63,6 +63,7 @@ pub enum ActiveState {
     Active,
     SignedIn,
     Dead,
+    Dirty, // Dirty is if the instance is new with incorrect credentials
 }
 
 #[derive(Debug, Clone, Serialize)]

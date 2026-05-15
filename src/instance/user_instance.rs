@@ -1,7 +1,6 @@
 use std::fs::read_to_string;
-use std::time::Duration;
 
-use tokio::{task::spawn_blocking, time::sleep};
+use tokio::task::spawn_blocking;
 use tracing::instrument::WithSubscriber;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking;
@@ -41,8 +40,8 @@ pub async fn user_instance(
     debug!("starting");
 
     let mut system_request = false;
-    // Bool = signedin
-    let mut webcom_thread: Option<(JoinHandle<FailureType>, bool)> = None;
+
+    let mut webcom_thread: Option<(JoinHandle<FailureType>, bool)> = None; // Bool = signedin
     let mut last_exit_code = ApplicationLogbook::load().state;
     let mut instance_active = true;
 
@@ -82,10 +81,7 @@ pub async fn user_instance(
             StartRequest::Calendar => return_calendar_response(),
             StartRequest::Delete => {
                 instance_active = false;
-                _ = webcom_thread.as_ref().is_some_and(|thread| {
-                    thread.0.abort();
-                    true
-                });
+
                 _ = deletion::delete_account(user.id, DeletedReason::Manual)
                     .await
                     .warn("Account deletion");
@@ -138,7 +134,11 @@ pub async fn user_instance(
         }
     }
     warn!("Killing instance, bye👋");
-    sleep(Duration::from_mins(40)).await;
+    _ = webcom_thread.as_ref().is_some_and(|thread| {
+        thread.0.abort();
+        true
+    });
+    // sleep(Duration::from_mins(40)).await;
     warn!("Manually killing instance after waiting");
 }
 
@@ -159,6 +159,13 @@ fn log_exit_code(exit_code: &FailureType, last_exit_code: &FailureType) -> Optio
         warn!("Exited with non-OK exit code: {exit_code:?}");
     }
     None
+}
+
+pub fn get_instance_age(user: &UserData) -> i64 {
+    let current_time = chrono::offset::Utc::now().naive_utc();
+    user.creation_date
+        .signed_duration_since(current_time)
+        .num_days()
 }
 
 fn get_logfile() -> Result<String> {

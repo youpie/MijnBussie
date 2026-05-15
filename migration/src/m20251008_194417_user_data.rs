@@ -73,4 +73,5 @@ pub enum UserData {
     LastSystemExecutionDate,
     LastSuccesfullSignInDate,
     CreationDate,
+    OnlineCreated,
 }

@@ -10,6 +10,7 @@ mod m20251110_155639_user_account;
 mod m20251115_110830_name;
 mod m20251121_111842_account_deletion;
 mod m20260123_131720_system_restore;
+mod m20260515_094839_online_created;
 
 pub struct Migrator;
 
@@ -27,6 +28,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20251115_110830_name::Migration),
             Box::new(m20251121_111842_account_deletion::Migration),
             Box::new(m20260123_131720_system_restore::Migration),
+            Box::new(m20260515_094839_online_created::Migration),
         ]
     }
 }

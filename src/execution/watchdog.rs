@@ -1,21 +1,20 @@
+use sea_orm::DatabaseConnection;
 use std::{
     collections::HashMap,
     sync::{Arc, LazyLock},
     time::Duration,
 };
-use sea_orm::DatabaseConnection;
 use tokio::{
-    sync::{
-        RwLock,
-        mpsc::Receiver},
+    sync::{RwLock, mpsc::Receiver},
     time::timeout,
 };
 
-use crate::{
-    database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData}, instance::{InstanceMap, InstanceName, UserInstance}
-};
-use crate::kuma::{KumaAction,KumaUserRequest,manage_users};
+use crate::kuma::{KumaAction, KumaUserRequest, manage_users};
 use crate::prelude::*;
+use crate::{
+    database::variables::{GeneralProperties, ThreadShare, UserData, UserInstanceData},
+    instance::{InstanceMap, InstanceName, UserInstance},
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum WatchdogRequest {
@@ -23,6 +22,7 @@ pub enum WatchdogRequest {
     KumaRequest((KumaAction, KumaUserRequest)),
     AllUser,
     FirstTime,
+    Delete(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -44,7 +44,7 @@ pub async fn watchdog(
 ) -> GenResult<()> {
     loop {
         // Update all users in the database every 30 minutes
-        let channel_wait = timeout(Duration::from_secs(60 * 30), receiver.recv()).await;
+        let channel_wait = timeout(Duration::from_mins(30), receiver.recv()).await;
         if let Ok(Some(ref request)) = channel_wait
             && let WatchdogRequest::SingleUser(user) = request
         {
@@ -65,6 +65,8 @@ pub async fn watchdog(
             )
             .await
             .warn("Api kuma run");
+        } else if let Ok(Some(WatchdogRequest::Delete(ref user))) = channel_wait {
+            stop_instances(&vec![user.to_owned()], &mut *instances.write().await).await;
         } else if channel_wait == Ok(None) {
             return Err(anyhow!("Notification channel closed"));
         } else {
@@ -131,7 +133,7 @@ async fn start_stop_instances(
     } else {
         debug!("Skipped kuma due to first run");
     }
-    stop_instances(&instances_to_remove, &mut active_instances);
+    stop_instances(&instances_to_remove, &mut active_instances).await;
     Ok(())
 }
 
@@ -186,14 +188,18 @@ async fn update_individual_user(
     )
     .await
     .warn("Kuma run individual");
-    stop_instances(&instances_to_remove, active_instances);
+    stop_instances(&instances_to_remove, active_instances).await;
     Ok(())
 }
 
-fn stop_instances(instances_to_stop: &Vec<String>, active_instances: &mut InstanceMap) {
+async fn stop_instances(instances_to_stop: &Vec<String>, active_instances: &mut InstanceMap) {
     for instance_name in instances_to_stop {
         if let Some(instance) = active_instances.get(instance_name) {
-            instance.thread_handle.abort_handle().abort();
+            instance
+                .request_sender
+                .send(crate::instance::StartRequest::Delete)
+                .await
+                .warn("Sending deletion message to instance")
         }
         warn!("Deleting instance: {instance_name}");
         active_instances.remove(instance_name);

@@ -9,6 +9,7 @@ use strfmt::strfmt;
 
 use crate::APPLICATION_NAME;
 use crate::database::secret::Secret;
+use crate::instance::user_instance::get_instance_age;
 
 use super::data::get_set_name;
 use super::deletion::DeletedReason;
@@ -477,6 +478,7 @@ pub fn send_account_deleted_mail(reason: DeletedReason) -> GenResult<()> {
 
 pub fn send_incorrect_new_password_mail() -> GenResult<()> {
     let env = EnvMailVariables::new();
+    let (_user, properties) = get_data();
     if !env.send_failed_signin_mail {
         return Ok(());
     }
@@ -484,7 +486,6 @@ pub fn send_incorrect_new_password_mail() -> GenResult<()> {
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let new_password_fail_html =
         fs::read_to_string("./templates/new_password_failed.html").unwrap();
-    let (_user, properties) = get_data();
     let mailer = load_mailer(&env)?;
     let name = get_set_name(None);
     let password_reset_link = &properties.password_reset_link;
@@ -517,13 +518,17 @@ pub fn send_failed_signin_mail(
     first_time: bool,
 ) -> GenResult<()> {
     let env = EnvMailVariables::new();
+    let (user, properties) = get_data();
     if !env.send_failed_signin_mail {
+        return Ok(());
+    }
+
+    if get_instance_age(&user) < 1 && user.online_created {
         return Ok(());
     }
 
     let base_html = fs::read_to_string("./templates/email_base.html").unwrap();
     let login_failure_html = fs::read_to_string("./templates/failed_signin.html").unwrap();
-    let (_user, properties) = get_data();
     info!("Sending failed sign in mail");
     let mailer = load_mailer(&env)?;
     let still_not_working_modifier = if first_time { "" } else { "nog steeds " };

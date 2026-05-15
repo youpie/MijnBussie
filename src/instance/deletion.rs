@@ -9,8 +9,11 @@ use tokio::sync::RwLock;
 const AUTO_DELETE_DURATION: Duration = Duration::days(31);
 const FRESH_DELETE_DURATION: Duration = Duration::days(1);
 
+use crate::instance::user_instance::get_instance_age;
+
 use super::*;
 
+#[derive(PartialEq)]
 pub enum DeletedReason {
     OldAge,
     NewDead,
@@ -64,8 +67,8 @@ pub async fn update_instance_timestamps(
     Ok(())
 }
 
-#[derive(Debug, Serialize, Clone)]
-enum InstanceStanding {
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub enum InstanceStanding {
     Safe,
     Fresh,
     InDanger,
@@ -103,7 +106,7 @@ impl StandingInformation {
 }
 
 impl InstanceStanding {
-    fn get_standing() -> InstanceStanding {
+    pub fn get_standing() -> InstanceStanding {
         let (user, _properties) = get_data();
 
         if !user.user_properties.auto_delete_account {
@@ -185,6 +188,12 @@ pub async fn delete_account(user_id: i32, reason: DeletedReason) -> GenResult<()
         .exec(&db)
         .await
         .warn("Removing user properties");
-    email::send_account_deleted_mail(reason).warn("Sending deletion mail");
+
+    if reason != DeletedReason::Manual
+        && (get_instance_age(&user_data) >= 1 || !user_data.online_created)
+    {
+        email::send_account_deleted_mail(reason).warn("Sending deletion mail");
+    }
+
     Ok(())
 }

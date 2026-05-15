@@ -8,6 +8,8 @@ use tokio::sync::mpsc::Sender;
 use tracing_futures::WithSubscriber;
 
 use crate::health::{send_heartbeat, update_calendar_exit_code};
+use crate::instance::deletion::InstanceStanding;
+use crate::instance::user_instance::get_instance_age;
 use crate::{FALLBACK_URL, MAIN_URL};
 
 use super::*;
@@ -65,6 +67,8 @@ pub async fn spawn_webcom_instance(
 pub fn is_webcom_instance_active(
     thread_store: &Option<(JoinHandle<FailureType>, bool)>,
 ) -> ActiveState {
+    let (user, _data) = get_data();
+    let standing = InstanceStanding::get_standing();
     if let Some(state) = thread_store
         && !state.0.is_finished()
     {
@@ -73,6 +77,11 @@ pub fn is_webcom_instance_active(
         } else {
             ActiveState::Active
         }
+    } else if standing == InstanceStanding::InDanger
+        && user.online_created
+        && get_instance_age(&user) < 1
+    {
+        ActiveState::Dirty
     } else {
         ActiveState::Dead
     }
@@ -112,16 +121,6 @@ async fn main_program(
         .send(StartRequest::SignedIn)
         .await
         .warn("Informing sign in");
-
-    #[cfg(debug_assertions)]
-    {
-        error!("Sent sign in message");
-        use std::time::Duration;
-
-        use tokio::time::sleep;
-
-        sleep(Duration::from_secs(60)).await;
-    }
     webdriver::wait_until_loaded(&driver)
         .await
         .context("Waiting until page loaded")?;
