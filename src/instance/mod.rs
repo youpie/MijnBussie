@@ -107,9 +107,9 @@ impl UserInstance {
     pub async fn new(user_data: UserInstanceData) -> Self {
         let user_name = user_data.user_data.read().await.user_name.clone();
         let span = warn_span!("Instance", user_name);
-        let request_channel = channel(1);
+        let request_channel = channel(2);
         let request_sender_arc = Arc::new(request_channel.0);
-        let response_channel = channel(1);
+        let response_channel = channel(2);
         let data_clone = user_data.clone();
         let thread = tokio::spawn(
             USER_PROPERTIES.scope(

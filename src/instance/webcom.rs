@@ -77,10 +77,7 @@ pub fn is_webcom_instance_active(
         } else {
             ActiveState::Active
         }
-    } else if standing == InstanceStanding::InDanger
-        && user.online_created
-        && get_instance_age(&user) < 1
-    {
+    } else if standing == InstanceStanding::Fresh && user.online_created {
         ActiveState::Dirty
     } else {
         ActiveState::Dead

@@ -175,6 +175,7 @@ async fn update_individual_user(
     }
     add_instances(db, &instances_to_add, active_instances).await;
     refresh_instances(db, &instances_to_refresh, active_instances).await;
+    stop_instances(&instances_to_remove, active_instances).await;
     manage_users(
         vec![
             (
@@ -188,7 +189,7 @@ async fn update_individual_user(
     )
     .await
     .warn("Kuma run individual");
-    stop_instances(&instances_to_remove, active_instances).await;
+
     Ok(())
 }
 
