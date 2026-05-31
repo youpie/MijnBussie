@@ -74,6 +74,13 @@ pub async fn manage_users(
     active_instances: &InstanceMap,
     properties: &GeneralProperties,
 ) -> GenResult<()> {
+    let kuma_properties = &properties.kuma_properties;
+
+    if kuma_properties.domain.is_empty() {
+        debug!("No kuma URL, skipping");
+        return Ok(());
+    }
+
     let (instances_to_add, instances_to_remove) = get_users(actions, active_instances);
 
     if instances_to_add.is_empty() && instances_to_remove.is_empty() {
@@ -87,7 +94,6 @@ pub async fn manage_users(
         instances_to_remove.len()
     );
 
-    let kuma_properties = &properties.kuma_properties;
     debug!("Logging into kuma");
     let client = connect_to_kuma(
         &Url::from_str(&kuma_properties.domain)?,
