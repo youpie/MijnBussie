@@ -1,12 +1,12 @@
-use std::{sync::Arc};
+use std::sync::Arc;
 
+use crate::database::secret::Secret;
+use crate::database::variables::{GeneralProperties, UserData};
 use entity::user_data;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{EntityTrait, IntoActiveModel};
 use secrecy::ExposeSecret;
-use tokio::{runtime::Handle};
-use crate::database::secret::Secret;
-use crate::database::variables::{GeneralProperties, UserData};
+use tokio::runtime::Handle;
 
 use super::*;
 
@@ -32,28 +32,27 @@ pub fn get_set_name_local(user: &UserData, set_new_name: Option<String>) -> Stri
     // Then try the global variable
     // Then try the Local database variable (which is not set the first time the instance is ever run)
     // So if this is called before the first time the instance is run, it wil return "Onbekend"
+    let current_instance_name = user
+        .name
+        .as_ref()
+        .and_then(|secret| Some(secret.0.expose_secret().to_owned()));
     let name = set_new_name
         .as_deref()
         .unwrap_or(
-            NAME.get().borrow().as_deref().unwrap_or(
-                user.name
-                    .as_ref()
-                    .and_then(|secret| Some(secret.0.expose_secret()))
-                    .unwrap_or(&user.user_name),
-            ),
+            current_instance_name
+                .as_deref()
+                .unwrap_or(user.user_name.as_str()),
         )
         .to_owned();
-
     // Open a database connection and write the new name to the database, if a new name request is done
-    if let Some(new_name) = set_new_name
-        && Some(new_name.as_str()) != NAME.get().borrow().as_deref()
+    if let Some(ref new_name) = set_new_name
+        && set_new_name != current_instance_name
     {
         tokio::task::block_in_place(move || {
-            Handle::current().block_on(update_name(new_name, user.id))
+            Handle::current().block_on(update_name(new_name.to_owned(), user.id))
         })
         .warn("Setting name");
     }
-    NAME.get().replace(Some(name.clone()));
     name
 }
 
