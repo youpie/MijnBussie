@@ -37,7 +37,6 @@ pub mod webcom;
 mod webdriver;
 
 task_local! {
-    static NAME: RefCell<Option<String>>;
     static USER_PROPERTIES: RefCell<Option<Arc<UserData>>>;
     static GENERAL_PROPERTIES: RefCell<Option<Arc<GeneralProperties>>>;
 }
@@ -97,7 +96,7 @@ pub enum StartRequest {
 
 pub struct UserInstance {
     pub user_instance_data: UserInstanceData,
-    pub thread_handle: JoinHandle<()>,
+    pub _thread_handle: JoinHandle<()>,
     pub request_sender: Arc<Sender<StartRequest>>,
     pub response_receiver: RwLock<Receiver<RequestResponse>>,
     pub execution_time: Time,
@@ -116,16 +115,13 @@ impl UserInstance {
                 RefCell::new(None),
                 GENERAL_PROPERTIES.scope(
                     RefCell::new(None),
-                    NAME.scope(
-                        RefCell::new(None),
-                        user_instance::user_instance(
-                            request_channel.1,
-                            response_channel.0,
-                            request_sender_arc.clone(),
-                            data_clone,
-                        )
-                        .instrument(span),
-                    ),
+                    user_instance::user_instance(
+                        request_channel.1,
+                        response_channel.0,
+                        request_sender_arc.clone(),
+                        data_clone,
+                    )
+                    .instrument(span),
                 ),
             ),
         );
@@ -147,7 +143,7 @@ impl UserInstance {
         );
         Self {
             user_instance_data: user_data,
-            thread_handle: thread,
+            _thread_handle: thread,
             request_sender: request_sender_arc,
             response_receiver: RwLock::new(response_channel.1),
             execution_time,

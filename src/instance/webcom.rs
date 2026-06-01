@@ -9,7 +9,6 @@ use tracing_futures::WithSubscriber;
 
 use crate::health::{send_heartbeat, update_calendar_exit_code};
 use crate::instance::deletion::InstanceStanding;
-use crate::instance::user_instance::get_instance_age;
 use crate::{FALLBACK_URL, MAIN_URL};
 
 use super::*;
@@ -51,10 +50,7 @@ pub async fn spawn_webcom_instance(
                     RefCell::new(Some(user)),
                     GENERAL_PROPERTIES.scope(
                         RefCell::new(Some(properties)),
-                        NAME.scope(
-                            RefCell::new(None),
-                            webcom_instance(start_request.clone(), exit_code_sender),
-                        ),
+                        webcom_instance(start_request.clone(), exit_code_sender),
                     ),
                 )
                 .with_current_subscriber(),
