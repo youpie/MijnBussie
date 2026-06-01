@@ -3,8 +3,8 @@ FROM rust:1.91.1 AS builder
 WORKDIR /usr/src/mijn_bussie
 
 # Copy vendor files to reduce pointless bandwidth use
-COPY vendor ./vendor
-COPY docker_cargo/config.toml ./.cargo/config.toml
+# COPY vendor ./vendor
+# COPY docker_cargo/config.toml ./.cargo/config.toml
 
 # 1. Cache dependency build
 COPY Cargo.toml Cargo.lock ./

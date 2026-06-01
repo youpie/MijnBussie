@@ -1,6 +1,5 @@
 use std::fs::read_to_string;
 
-use tokio::task::spawn_blocking;
 use tracing::instrument::WithSubscriber;
 use tracing::level_filters::LevelFilter;
 use tracing_appender::non_blocking;
@@ -70,12 +69,7 @@ pub async fn user_instance(
             StartRequest::ExitCode => Some(RequestResponse::ExitCode(last_exit_code.clone())),
             StartRequest::UserData => Some(RequestResponse::UserData(user.as_ref().clone())),
             StartRequest::Welcome => {
-                _ = spawn_blocking(|| email::send_welcome_mail(true))
-                    .await
-                    .and_then(|email_result| {
-                        email_result.warn("Sending welcome email");
-                        Ok(())
-                    });
+                email::send_welcome_mail(true).warn("Sending welcome email");
                 Some(RequestResponse::GenResponse("OK".to_owned()))
             }
             StartRequest::Calendar => return_calendar_response(),
