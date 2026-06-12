@@ -14,7 +14,7 @@ build_m() {
 }
 
 build_a() {
-    git submodule update
+    # git submodule update
     cd auth/repo
     git pull
     git checkout main
