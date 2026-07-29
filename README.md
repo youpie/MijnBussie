@@ -16,3 +16,9 @@
 Webcom is een frustrerende, trage website. Met dit programma kan je een mailtje krijgen als je een nieuwe shift hebt, en kan je al je shifts automatisch toevoegen aan je agenda.
 
 Ik kan de motivatie niet vinden om uit te leggen hoe deze nieuwe versie werkt, dus stuur mij maar een mailtje als je dit wilt doen
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://brainmade.org/white-logo.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://brainmade.org/black-logo.svg">
+  <img align="right" alt="Brain mark." src="https://brainmade.org/black-logo.svg">
+</picture>

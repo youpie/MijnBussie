@@ -71,6 +71,7 @@ services:
     volumes:
       - ./pg_data:/var/lib/postgresql:Z
     profiles: ["prod"]
+    
 
   selenium-hub:
     image: selenium/hub:4.40.0
@@ -82,6 +83,7 @@ services:
     environment:
       - SE_NODE_MAX_SESSIONS=18
       - SE_NODE_DETECT_DRIVERS=false
+    restart: unless-stopped
 
   node-docker:
     image: selenium/node-docker:4.40.0
