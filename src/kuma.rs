@@ -54,7 +54,7 @@ fn get_users(
     for action in actions {
         match action.0 {
             KumaAction::Add => {
-                users_to_add.append(&mut handle_user_request(action.1, active_instances));
+                // users_to_add.append(&mut handle_user_request(action.1, active_instances));
             }
             KumaAction::Delete => {
                 users_to_remove.append(&mut handle_user_request(action.1, active_instances));
