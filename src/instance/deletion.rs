@@ -152,7 +152,7 @@ pub async fn check_instance_standing() -> bool {
             std::fs::remove_file(warning_sent_path).warn("Removing warning sent file");
         }
         InstanceStanding::AlmostDeleted => {
-            if warning_sent_path.exists() {
+            if !warning_sent_path.exists() {
                 email::send_deletion_warning_mail().warn("sending deletion warning");
                 std::fs::write(warning_sent_path, []).warn("writing deletion sent warning");
             }
