@@ -23,7 +23,7 @@ RUN touch src/main.rs
 RUN cargo build --release -p mijn_bussie_auth
 
 # ---- Final Stage ----
-FROM ubuntu:24.04
+FROM FROM debian:stable-slim
 
 WORKDIR /app
 
