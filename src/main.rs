@@ -1,8 +1,8 @@
-const MAIN_URL: &str = "webcom.connexxion.nl";
+const MAIN_URL: &str = "diensten.transdev.nl";
 // the ;x should be equal to the ammount of fallback URLs
 const FALLBACK_URL: [&str; 2] = [
-    "https://dmz-wbc-web01.connexxion.nl/WebComm/default.aspx",
-    "https://dmz-wbc-web02.connexxion.nl/WebComm/default.aspx",
+    "https://diensten1.transdev.nl/WebComm/default.aspx",
+    "https://diensten2.transdev.nl/WebComm/default.aspx",
 ];
 const APPLICATION_NAME: &str = "Mijn Bussie";
 
