@@ -77,5 +77,6 @@ pub async fn wait_untill_redirect(driver: &WebDriver) -> GenResult<()> {
 
     debug!("Redirected to: {}", current_url);
     wait_until_loaded(driver).await?;
+    tokio::time::sleep(Duration::from_millis(50)).await;
     Ok(())
 }

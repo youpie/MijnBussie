@@ -106,6 +106,11 @@ async fn main_program(
                 .map_err(|_| Box::new(FailureType::ConnectError))?
         }
     };
+    if let Ok(url) = driver.current_url().await.map(|v| v.path().to_string())
+        && url.contains("WebComm/servererrorpage.aspx")
+    {
+        return Err(SignInFailure::WebcomDown.into());
+    }
     parsing::sign_in_and_open_calendar_view(&driver, personeelsnummer, password)
         .await
         .context("Signing in")?;

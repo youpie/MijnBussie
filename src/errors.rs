@@ -88,16 +88,15 @@ impl<T> OptionResult<T> for Option<T> {
     }
 }
 
-pub async fn check_sign_in_error(driver: &WebDriver) -> GenResult<FailureType> {
-    error!("Sign in failed");
+pub async fn check_sign_in_error(driver: &WebDriver) -> GenResult<Option<FailureType>> {
     match driver.find(By::Id("ctl00_lblMessage")).await {
         Ok(element) => {
             let element_text = element.text().await?;
             let sign_in_error_type = get_sign_in_error_type(&element_text);
-            info!("Found error banner: {:?}", &sign_in_error_type);
-            Ok(FailureType::SignInFailed(sign_in_error_type))
+            error!("Sign in failed: {:?}", &sign_in_error_type);
+            Ok(Some(FailureType::SignInFailed(sign_in_error_type)))
         }
-        Err(_) => Err(anyhow!("Geen fout banner gevonden")),
+        Err(_) => Ok(None),
     }
 }
 

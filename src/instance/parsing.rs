@@ -153,11 +153,27 @@ pub async fn sign_in_and_open_calendar_view(
 ) -> GenResult<()> {
     info!("Logging in..");
     sign_in_webcom(driver, user, pass).await?;
+    get_name(driver).await?;
     info!("Loading rooster..");
     navigate_to_subdirectory(driver, "roster.aspx").await?;
     Ok(())
 }
 
+async fn get_name(driver: &WebDriver) -> GenResult<()> {
+    let name_text = driver.find(By::Tag("h3")).await?.text().await?;
+    let name = name_text
+        .split(",")
+        .last()
+        .result()?
+        .split_whitespace()
+        .next()
+        .result()?
+        .to_string();
+    data::get_set_name(Some(name));
+    Ok(())
+}
+
+#[async_recursion]
 async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenResult<()> {
     let possible_error = match driver.find(By::Id("_error_header")).await {
         Ok(element) => Some(element.text().await.unwrap_or("GEEN TEKST".to_owned())),
@@ -181,22 +197,12 @@ async fn sign_in_webcom(driver: &WebDriver, user: Secret, pass: Secret) -> GenRe
         .click()
         .await?;
     debug!("waiting until login page is loaded");
-    let _ = wait_for_response(&driver, By::Tag("h3"), false).await;
-    debug!("login page is loaded");
-    let name_text = match driver.find(By::Tag("h3")).await {
-        Ok(element) => element.text().await?,
-        Err(_) => {
-            return Err(anyhow!(check_sign_in_error(driver).await?).into());
-        }
+    match check_sign_in_error(driver).await? {
+        Some(error) => return Err(error.into()),
+        None => debug!("Checked for failure banner, but none was there"),
     };
-    let name = name_text
-        .split(",")
-        .last()
-        .result()?
-        .split_whitespace()
-        .next()
-        .result()?
-        .to_string();
-    data::get_set_name(Some(name));
+    let _ = wait_for_response(&driver, By::Id("ctl00_cntMainBody_lgnView_lnk_1"), false).await;
+    debug!("main page is loaded");
+
     Ok(())
 }
