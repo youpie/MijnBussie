@@ -118,7 +118,7 @@ fn get_sign_in_error_type(text: &str) -> SignInFailure {
         "Uw aanmelding was niet succesvol. Voer a.u.b. het personeelsnummer of 'naam, voornaam' in" => {
             SignInFailure::IncorrectCredentials
         }
-        "Te veel verkeerde aanmeldpogingen" => SignInFailure::TooManyTries,
+        "Te veel verkeerde aanmeldpogingen." => SignInFailure::TooManyTries,
         _ if text.contains("vrijgeschakeld") => SignInFailure::NoUser,
         _ => SignInFailure::Other(text.to_string()),
     }
