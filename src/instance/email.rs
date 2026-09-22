@@ -177,6 +177,7 @@ fn create_send_new_email(
     for shift in &new_shifts {
         let shift_table_clone = strfmt!(&shift_table,
             shift_number => shift.number.clone(),
+            shift_location => shift.location.clone(),
             shift_date => shift.date.format(DATE_DESCRIPTION)?.to_string(),
             shift_start => shift.start.format(TIME_DESCRIPTION)?.to_string(),
             shift_end => shift.end.format(TIME_DESCRIPTION)?.to_string(),
@@ -524,6 +525,11 @@ pub fn send_failed_signin_mail(
     }
 
     if get_instance_age(&user) < 1 && user.online_created {
+        return Ok(());
+    }
+
+    if error.error == Some(SignInFailure::WebcomDown) {
+        warn!("Failed to connect to webcomm");
         return Ok(());
     }
 

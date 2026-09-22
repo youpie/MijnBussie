@@ -1,4 +1,3 @@
-
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -9,12 +8,12 @@ use std::{
 use thirtyfour::{By, WebDriver};
 use thiserror::Error;
 
-
-use crate::{
-    create_path, get_data, set_strict_file_permissions,
-    instance::{email, webcom::ResumeReason},
-};
 use crate::prelude::*;
+use crate::{
+    create_path, get_data,
+    instance::{email, webcom::ResumeReason},
+    set_strict_file_permissions,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Error, Default)]
 pub enum SignInFailure {
@@ -106,7 +105,7 @@ pub async fn check_sign_in_error(driver: &WebDriver) -> GenResult<FailureType> {
 pub fn check_if_webcom_unavailable(h3_text: Option<String>) -> bool {
     match h3_text {
         Some(text) => {
-            if text == "De servertoepassing is niet beschikbaar.".to_owned() {
+            if text.contains("De webtoepassing op deze webserver is momenteel niet beschikbaar.") {
                 return true;
             }
         }
@@ -122,7 +121,7 @@ fn get_sign_in_error_type(text: &str) -> SignInFailure {
         }
         "Te veel verkeerde aanmeldpogingen" => SignInFailure::TooManyTries,
         _ if text.contains("vrijgeschakeld") => SignInFailure::NoUser,
-        _ => SignInFailure::Other(text.to_string())
+        _ => SignInFailure::Other(text.to_string()),
     }
 }
 

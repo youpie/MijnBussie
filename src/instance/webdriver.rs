@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use dotenvy::var;
 use thirtyfour::{DesiredCapabilities, WebDriver, error::WebDriverError};
 
@@ -47,6 +49,7 @@ pub async fn wait_until_loaded(driver: &WebDriver) -> GenResult<()> {
         }
     })
     .await?;
+    tokio::time::sleep(Duration::from_millis(200)).await;
     Ok(())
 }
 
@@ -69,9 +72,7 @@ pub async fn wait_untill_redirect(driver: &WebDriver) -> GenResult<()> {
 
     if current_url == initial_url {
         warn!("Timeout waiting for redirect.");
-        return Err(
-            anyhow!("Redirect did not occur"),
-        );
+        return Err(anyhow!("Redirect did not occur"));
     }
 
     debug!("Redirected to: {}", current_url);

@@ -1,34 +1,49 @@
 <tr>
     <td style="padding-top:10px;">
-        <table width="100%" cellpadding="5" cellspacing="0" border="1" style="border-collapse:collapse; border-color:#cccccc;">
+        <table width="100%" cellpadding="5" cellspacing="0" border="1"
+            style="border-collapse:collapse; border-color:#cccccc;">
             <tr>
-                <td width="35%" style="background-color:#eeeeee;"><strong>Dienst</strong></td>
+                <td width="35%"
+                    style="background-color:#eeeeee;"><strong>Dienst</strong></td>
                 <td style="background-color:#eeeeee;">{shift_number}</td>
             </tr>
             <tr>
-                <td style="background-color:#eeeeee;"><strong>Datum</strong></td>
+                <td
+                    style="background-color:#eeeeee;"><strong>Locatie</strong></td>
+                <td style="background-color:#eeeeee;">{shift_location}</td>
+            </tr>
+            <tr>
+                <td
+                    style="background-color:#eeeeee;"><strong>Datum</strong></td>
                 <td style="background-color:#eeeeee;">{shift_date}</td>
             </tr>
             <tr>
-                <td style="background-color:#eeeeee;"><strong>Begintijd</strong></td>
+                <td
+                    style="background-color:#eeeeee;"><strong>Begintijd</strong></td>
                 <td style="background-color:#eeeeee;">{shift_start}</td>
             </tr>
             <tr>
-                <td style="background-color:#eeeeee;"><strong>Eindtijd</strong></td>
+                <td
+                    style="background-color:#eeeeee;"><strong>Eindtijd</strong></td>
                 <td style="background-color:#eeeeee;">{shift_end}</td>
             </tr>
             <tr>
                 <td style="background-color:#eeeeee;"><strong>Duur</strong></td>
-                <td style="background-color:#eeeeee;">{shift_duration_hour} uur {shift_duration_minute} minuten</td>
+                <td style="background-color:#eeeeee;">{shift_duration_hour} uur
+                    {shift_duration_minute} minuten</td>
             </tr>
             <tr>
                 <td style="text-align:center;">
-                    <a href="{shift_link_pdf}" style="color:#003366; text-decoration:none; font-weight:bold; font-size: smaller;">Bekijk PDF</a>
-                </td>  
+                    <a href="{shift_link_pdf}"
+                        style="color:#003366; text-decoration:none; font-weight:bold; font-size: smaller;">Bekijk
+                        PDF</a>
+                </td>
                 <td style="background-color:#ffffff;">
                     <div style="display: flex; justify-content: center;">
-                    <a href="https://bussie.app{bussie_login}/shifts/{shift_link}" target="_blank" style="all: unset;">
-                        <button style=" background-color: #edf0fe;  
+                        <a
+                            href="https://bussie.app{bussie_login}/shifts/{shift_link}"
+                            target="_blank" style="all: unset;">
+                            <button style=" background-color: #edf0fe;  
                             font-size: 14px;
                             font-weight: bold;
                             color: #422ad5;
@@ -42,11 +57,15 @@
                             cursor: pointer;"
                                 onmouseover="this.style.backgroundColor='#3b25c1'; this.style.color='#e0e7ff'; this.style.boxShadow='0 2px 4px #3a25c1b2';"
                                 onmouseout="this.style.backgroundColor='#edf0fe'; this.style.color='#422ad5'; this.style.boxShadow='none';"
-                                onmousedown="this.style.translate='0 0.5px';" onmouseup="this.style.translate='0 0';">
-                                <img src="https://raw.githubusercontent.com/gist/tcBorek2002/e7f4794010a504e7e02314694c483826/raw/26bcb66f701c0fe2538f343f5d5676e8dc6608c6/bus.svg" alt="Bus" class="custom-image" style="    height: 1.6em;" />
+                                onmousedown="this.style.translate='0 0.5px';"
+                                onmouseup="this.style.translate='0 0';">
+                                <img
+                                    src="https://raw.githubusercontent.com/gist/tcBorek2002/e7f4794010a504e7e02314694c483826/raw/26bcb66f701c0fe2538f343f5d5676e8dc6608c6/bus.svg"
+                                    alt="Bus" class="custom-image"
+                                    style="    height: 1.6em;" />
                                 Bekijk in Bussie
-                        </button>
-                    </a>
+                            </button>
+                        </a>
                     </div>
                 </td>
             </tr>
